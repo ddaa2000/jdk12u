@@ -98,10 +98,10 @@ protected:
     // The mask contains zeros in places for all other values.
     clean_card_mask             = clean_card - 31,
 
-    dirty_card                  =  0,
+    dirty_card                  =  0,   // [x] Contain cross-region reference
     precleaned_card             =  1,
-    claimed_card                =  2,
-    deferred_card               =  4,
+    claimed_card                =  2,   // [?] Some GC thread acquire this card to scan it ?
+    deferred_card               =  4,    // [?] 
     last_card                   =  8,
     CT_MR_BS_last_reserved      = 16
   };

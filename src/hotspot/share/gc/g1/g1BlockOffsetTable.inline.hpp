@@ -75,6 +75,8 @@ void G1BlockOffsetTable::set_offset_array(size_t left, size_t right, u_char offs
 }
 
 // Variant of index_for that does not check the index for validity.
+// BOTConstants::LogN == 9, card size 512 bytes?
+//
 inline size_t G1BlockOffsetTable::index_for_raw(const void* p) const {
   return pointer_delta((char*)p, _reserved.start(), sizeof(char)) >> BOTConstants::LogN;
 }

@@ -306,6 +306,15 @@ void ZCollectedHeap::prepare_for_verify() {
   // Does nothing
 }
 
+
+
+// debug - prefetch
+void ZCollectedHeap::prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param ){
+
+  guarantee(false, "%s, Can NOT reach here.\n",__func__);
+
+}
+
 void ZCollectedHeap::print_on(outputStream* st) const {
   _heap.print_on(st);
 }

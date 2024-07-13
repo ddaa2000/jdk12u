@@ -110,6 +110,26 @@
 #define INTX_FORMAT_W(width)  "%" #width PRIdPTR
 #define UINTX_FORMAT_W(width) "%" #width PRIuPTR
 
+// ----------------------------------------------------------------------------------------------------
+// MemLiner
+
+#define SEMERU_START_ADDR 0x400000000000UL
+
+// page status 
+enum page_stat{
+  MAPPED   = 0,
+  UNMAPPED = 1,
+  SWAPPED  = 2,
+};
+struct epoch_struct{
+  unsigned int epoch;   // the first 32 bits for epoch recording
+  unsigned int length;  // length of the page_stats
+  //unsigned int page_stats[COVERED_MEM_LENGTH];  // the epoch value for each page
+  unsigned char page_stats[];
+};
+
+
+
 //----------------------------------------------------------------------------------------------------
 // Constants
 
@@ -959,6 +979,13 @@ const int      badCodeHeapFreeVal = 0xDD;                   // value used to zap
 
 // Default TaskQueue size is 16K (32-bit) or 128K (64-bit)
 #define TASKQUEUE_SIZE (NOT_LP64(1<<14) LP64_ONLY(1<<17))
+
+
+
+// Haoran: modify
+#define INSTRUMENT_QUEUE_SIZE (NOT_LP64(1<<14) LP64_ONLY(1<<17))
+#define PREFETCH_QUEUE_SIZE (NOT_LP64(1<<14) LP64_ONLY(1<<17))
+
 
 //----------------------------------------------------------------------------------------------------
 // Utility functions for bitfield manipulations

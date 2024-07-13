@@ -198,7 +198,7 @@ class HeapRegion: public G1ContiguousSpace {
   // The remembered set for this region.
   // (Might want to make this "inline" later, to avoid some alloc failure
   // issues.)
-  HeapRegionRemSet* _rem_set;
+  HeapRegionRemSet* _rem_set;  //[x] Region Local RemSet
 
   // Auxiliary functions for scan_and_forward support.
   // See comments for CompactibleSpace for more information.
@@ -257,6 +257,12 @@ class HeapRegion: public G1ContiguousSpace {
   SurvRateGroup* _surv_rate_group;
   int  _age_index;
 
+
+  // [?] Are these 2 bitmaps used for Concurrent Marking ?
+  //  Concurrent marking scans [bottom, _prev_top_at_mark_start).
+  //  And, Remark scans  [_prev_top_at_mark_start, min(_next_top_at_mark_start, end) ) ??
+  //  
+  //
   // The start of the unmarked area. The unmarked area extends from this
   // word until the top and/or end of the region, and is the part
   // of the region for which no marking was done, i.e. objects may
@@ -513,6 +519,8 @@ class HeapRegion: public G1ContiguousSpace {
   void clear_cardtable();
 
   // Get the start of the unmarked area in this region.
+  // [?] meaning of these 2 tops ?
+  //
   HeapWord* prev_top_at_mark_start() const { return _prev_top_at_mark_start; }
   HeapWord* next_top_at_mark_start() const { return _next_top_at_mark_start; }
 
@@ -621,6 +629,12 @@ class HeapRegion: public G1ContiguousSpace {
   bool obj_allocated_since_prev_marking(oop obj) const {
     return (HeapWord *) obj >= prev_top_at_mark_start();
   }
+
+  /**
+   * Tag : how can this be possible ?? 
+   *    Allocated since next marking ???
+   * 
+   */
   bool obj_allocated_since_next_marking(oop obj) const {
     return (HeapWord *) obj >= next_top_at_mark_start();
   }

@@ -74,11 +74,17 @@ extern Monitor* Threads_lock;                    // a lock on the Threads table 
 extern Mutex*   NonJavaThreadsList_lock;         // a lock on the NonJavaThreads list
 extern Monitor* CGC_lock;                        // used for coordination between
                                                  // fore- & background GC threads.
+extern Monitor* CPF_lock;                        // Haoran: modify used for coordination between
+                                                 // background GC threads and background PF threads.
 extern Monitor* STS_lock;                        // used for joining/leaving SuspendibleThreadSet.
 extern Monitor* FullGCCount_lock;                // in support of "concurrent" full gc
 extern Mutex*   SATB_Q_FL_lock;                  // Protects SATB Q
                                                  // buffer free list.
 extern Monitor* SATB_Q_CBL_mon;                  // Protects SATB Q
+                                                 // completed buffer queue.
+extern Mutex*   PREFETCH_Q_FL_lock;                  // Protects SATB Q             Haoran: modify
+                                                 // buffer free list.
+extern Monitor* PREFETCH_Q_CBL_mon;                  // Protects SATB Q             Haoran: modify
                                                  // completed buffer queue.
 extern Mutex*   Shared_SATB_Q_lock;              // Lock protecting SATB
                                                  // queue shared by

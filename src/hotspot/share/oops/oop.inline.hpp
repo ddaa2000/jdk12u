@@ -204,6 +204,10 @@ int oopDesc::size()  {
   return size_given_klass(klass());
 }
 
+/**
+ * Tag : Calculate the oops by using klass information
+ * 
+ */
 int oopDesc::size_given_klass(Klass* klass)  {
   int lh = klass->layout_helper();
   int s;
@@ -431,6 +435,10 @@ void oopDesc::oop_iterate(OopClosureType* cl, MemRegion mr) {
   OopIteratorClosureDispatch::oop_oop_iterate(cl, this, klass(), mr);
 }
 
+/**
+ * Tag : abstract of oop fields iterate with return the oop size
+ * 
+ */
 template <typename OopClosureType>
 int oopDesc::oop_iterate_size(OopClosureType* cl) {
   Klass* k = klass();

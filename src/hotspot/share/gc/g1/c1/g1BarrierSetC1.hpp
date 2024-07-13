@@ -132,6 +132,9 @@ class G1BarrierSetC1 : public ModRefBarrierSetC1 {
   CodeBlob* pre_barrier_c1_runtime_code_blob() { return _pre_barrier_c1_runtime_code_blob; }
   CodeBlob* post_barrier_c1_runtime_code_blob() { return _post_barrier_c1_runtime_code_blob; }
 
+  // //Haoran: modify
+  // virtual LIR_Opr resolve_address(LIRAccess& access, bool resolve_in_register);
+
   virtual void generate_c1_runtime_stubs(BufferBlob* buffer_blob);
 };
 

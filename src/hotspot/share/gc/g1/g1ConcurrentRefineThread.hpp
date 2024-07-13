@@ -32,8 +32,14 @@
 class CardTableEntryClosure;
 class G1ConcurrentRefine;
 
-// One or more G1 Concurrent Refinement Threads may be active if concurrent
-// refinement is in progress.
+
+/**
+ *  One or more G1 Concurrent Refinement Threads may be active if concurrent
+ *  refinement is in progress.
+ * 
+ * Tag [?] What's this closure used for???
+ * 
+ */
 class G1ConcurrentRefineThread: public ConcurrentGCThread {
   friend class VMStructs;
   friend class G1CollectedHeap;
@@ -44,7 +50,7 @@ class G1ConcurrentRefineThread: public ConcurrentGCThread {
 
   bool _active;
   Monitor* _monitor;
-  G1ConcurrentRefine* _cr;
+  G1ConcurrentRefine* _cr;    // [?] Transfer dirty card to RemSet ??
 
   void wait_for_completed_buffers();
 

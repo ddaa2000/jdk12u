@@ -143,23 +143,23 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_OprDesc* addr, LIR_OprD
   }
   assert(addr->is_register(), "must be a register at this point");
 
-  LIR_Opr xor_res = gen->new_pointer_register();
-  LIR_Opr xor_shift_res = gen->new_pointer_register();
-  if (TwoOperandLIRForm) {
-    __ move(addr, xor_res);
-    __ logical_xor(xor_res, new_val, xor_res);
-    __ move(xor_res, xor_shift_res);
-    __ unsigned_shift_right(xor_shift_res,
-                            LIR_OprFact::intConst(HeapRegion::LogOfHRGrainBytes),
-                            xor_shift_res,
-                            LIR_OprDesc::illegalOpr());
-  } else {
-    __ logical_xor(addr, new_val, xor_res);
-    __ unsigned_shift_right(xor_res,
-                            LIR_OprFact::intConst(HeapRegion::LogOfHRGrainBytes),
-                            xor_shift_res,
-                            LIR_OprDesc::illegalOpr());
-  }
+  // LIR_Opr xor_res = gen->new_pointer_register();
+  // LIR_Opr xor_shift_res = gen->new_pointer_register();
+  // if (TwoOperandLIRForm) {
+  //   __ move(addr, xor_res);
+  //   __ logical_xor(xor_res, new_val, xor_res);
+  //   __ move(xor_res, xor_shift_res);
+  //   // __ unsigned_shift_right(xor_shift_res,
+  //   //                         LIR_OprFact::intConst(HeapRegion::LogOfHRGrainBytes),
+  //   //                         xor_shift_res,
+  //   //                         LIR_OprDesc::illegalOpr());
+  // } else {
+  //   __ logical_xor(addr, new_val, xor_res);
+  //   __ unsigned_shift_right(xor_res,
+  //                           LIR_OprFact::intConst(HeapRegion::LogOfHRGrainBytes),
+  //                           xor_shift_res,
+  //                           LIR_OprDesc::illegalOpr());
+  // }
 
   if (!new_val->is_register()) {
     LIR_Opr new_val_reg = gen->new_register(T_OBJECT);
@@ -168,10 +168,11 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_OprDesc* addr, LIR_OprD
   }
   assert(new_val->is_register(), "must be a register at this point");
 
-  __ cmp(lir_cond_notEqual, xor_shift_res, LIR_OprFact::intptrConst(NULL_WORD));
+  // __ cmp(lir_cond_notEqual, xor_shift_res, LIR_OprFact::intptrConst(NULL_WORD));
 
   CodeStub* slow = new G1PostBarrierStub(addr, new_val);
-  __ branch(lir_cond_notEqual, LP64_ONLY(T_LONG) NOT_LP64(T_INT), slow);
+  // __ branch(lir_cond_notEqual, LP64_ONLY(T_LONG) NOT_LP64(T_INT), slow);
+  __ jump(slow);
   __ branch_destination(slow->continuation());
 }
 
@@ -198,6 +199,15 @@ void G1BarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) {
     }
   }
 }
+
+// LIR_Opr G1BarrierSetC1::resolve_address(LIRAccess& access, bool resolve_in_register) {
+
+//   LIR_Opr base = access.base().item().result();
+//   // oop base_oop = (oop)base;
+
+//   return return ModRefBarrierSetC1::resolve_address(access, resolve_in_register);
+// }
+
 
 class C1G1PreBarrierCodeGenClosure : public StubAssemblerCodeGenClosure {
   virtual OopMapSet* generate_code(StubAssembler* sasm) {

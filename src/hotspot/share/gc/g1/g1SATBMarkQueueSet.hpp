@@ -27,6 +27,10 @@
 
 #include "gc/shared/satbMarkQueue.hpp"
 
+// Haoran: modify
+#include "gc/shared/prefetchQueue.hpp"
+
+
 class G1CollectedHeap;
 class JavaThread;
 
@@ -47,5 +51,24 @@ public:
   virtual SATBMarkQueue& satb_queue_for_thread(JavaThread* const t) const;
   virtual void filter(SATBMarkQueue* queue);
 };
+
+
+// Haoran: modify
+class G1PrefetchQueueSet : public PrefetchQueueSet {
+  G1CollectedHeap* _g1h;
+
+public:
+  G1PrefetchQueueSet();
+
+  void initialize(G1CollectedHeap* g1h,
+                  Monitor* cbl_mon,
+                  BufferNode::Allocator* allocator);
+
+  static void handle_zero_index_for_thread(JavaThread* t);
+  virtual PrefetchQueue& prefetch_queue_for_thread(JavaThread* const t) const;
+  virtual void filter(PrefetchQueue* queue);
+};
+
+
 
 #endif // SHARE_VM_GC_G1_G1SATBMARKQUEUE_HPP

@@ -88,7 +88,7 @@ G1ParScanThreadState::G1ParScanThreadState(G1CollectedHeap* g1h,
 
 // Pass locally gathered statistics to global state.
 void G1ParScanThreadState::flush(size_t* surviving_young_words) {
-  _dcq.flush();
+  _dcq.flush();   // [?] Flush to where ?
   // Update allocation statistics.
   _plab_allocator->flush_and_retire_stats();
   _g1h->g1_policy()->record_age_table(&_age_table);
@@ -192,6 +192,16 @@ HeapWord* G1ParScanThreadState::allocate_in_next_plab(InCSetState const state,
   }
 }
 
+/**
+ * Tag : Decide the destination region of current oop.
+ *   
+ *  if age < _tenuring_threshold
+ *    Young Region
+ *   else
+ *     Old Region
+ *   fi  
+ * 
+ */
 InCSetState G1ParScanThreadState::next_state(InCSetState const state, markOop const m, uint& age) {
   if (state.is_young()) {
     age = !m->has_displaced_mark_helper() ? m->age()
@@ -217,6 +227,35 @@ void G1ParScanThreadState::report_promotion_event(InCSetState const dest_state,
   }
 }
 
+
+/**
+ * Tag : Do the Action of Copying alive objects to Survivor/Old Region
+ *       Dirty card queue, bitmap marking are done in the caller.
+ * 
+ * Parameters:
+ *     InCSetState sate: current state of target oop
+ *     oop old          : the oop of current/target oop
+ * 
+ * 1) obj copy action.
+ *   If the target oop is NOT copied by other gc task
+ *     Copy object to new address
+ *         if obj.age >= threshold
+ *             copy to old region
+ *         else
+ *             copy survivor region
+ *  Else
+ *     return the Forwading pointer
+ * 
+ * 
+ * 
+ * 2) Mark region as Root Region
+ *     For a full region.
+ *     if this is intial marking phase
+ *       retire the region && mark it as Root region
+ *     else
+ *       retire this retion.
+ *      
+ */
 oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
                                                  oop const old,
                                                  markOop const old_mark) {
@@ -228,13 +267,16 @@ oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
          (!from_region->is_young() && young_index == 0), "invariant" );
 
   uint age = 0;
-  InCSetState dest_state = next_state(state, old_mark, age);
+  InCSetState dest_state = next_state(state, old_mark, age);  // The dest space, Young or Old 
   // The second clause is to prevent premature evacuation failure in case there
   // is still space in survivor, but old gen is full.
   if (_old_gen_is_full && dest_state.is_old()) {
     return handle_evacuation_failure_par(old, old_mark);
   }
-  HeapWord* obj_ptr = _plab_allocator->plab_allocate(dest_state, word_sz);
+
+  // Based on the dest_state, the obj_ptr can point to both Young and Old Region.
+  //
+  HeapWord* obj_ptr = _plab_allocator->plab_allocate(dest_state, word_sz);  // [?] _plab_allocator points to dest rgion? ?
 
   // PLAB allocations should succeed most of the time, so we'll
   // normally check against NULL once and that's it.
@@ -273,10 +315,16 @@ oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
 
   const oop obj = oop(obj_ptr);
   const oop forward_ptr = old->forward_to_atomic(obj, old_mark, memory_order_relaxed);
+
+  // forward_ptr == NULL, means set forwarding value successfully.
+  // OR 
+  // This object is already handled by other GC task, the new obj address is stored in forward_ptr
+  //    return it to caller.
   if (forward_ptr == NULL) {
     Copy::aligned_disjoint_words((HeapWord*) old, obj_ptr, word_sz);
 
     if (dest_state.is_young()) {
+      // a. Copy alive objects to Survivor region, Young Space
       if (age < markOopDesc::max_age) {
         age++;
       }
@@ -292,7 +340,9 @@ oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
       }
       _age_table.add(age, word_sz);
     } else {
-      obj->set_mark_raw(old_mark);
+      // b. Copy alive objects to Old Region, Old Space
+      //    Then, just keep the old markOop
+      obj->set_mark_raw(old_mark);   // [?] Meaning of this ?  Should set the RemSet of this old region ??
     }
 
     if (G1StringDedup::is_enabled()) {
@@ -311,6 +361,8 @@ oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
     _surviving_young_words[young_index] += word_sz;
 
     if (obj->is_objArray() && arrayOop(obj)->length() >= ParGCArrayScanChunk) {
+      // a. Target object is an array, scan its fields in a fast way.
+      
       // We keep track of the next start index in the length field of
       // the to-space object. The actual length can be found in the
       // length field of the from-space object.
@@ -318,8 +370,13 @@ oop G1ParScanThreadState::copy_to_survivor_space(InCSetState const state,
       oop* old_p = set_partial_array_mask(old);
       do_oop_partial_array(old_p);
     } else {
-      G1ScanInYoungSetter x(&_scanner, dest_state.is_young());
-      obj->oop_iterate_backwards(&_scanner);
+      // b. Target object is a normal object, scan it based on its klass type.
+
+      //[!] Build the G1ScanInYoungSetter closure : _scanner
+      // dest_state is YOUNG. which means all the object are evacuated to Survivor region ?? Should be based on age, right ??
+      //      set : _scanning_in_young = True/False. based on the location of the new address of target oop.
+      G1ScanInYoungSetter x(&_scanner, dest_state.is_young());   
+      obj->oop_iterate_backwards(&_scanner);   // continue scanning this target object's fields
     }
     return obj;
   } else {

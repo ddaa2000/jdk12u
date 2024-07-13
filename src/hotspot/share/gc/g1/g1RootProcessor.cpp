@@ -75,13 +75,24 @@ G1RootProcessor::G1RootProcessor(G1CollectedHeap* g1h, uint n_workers) :
     _lock(Mutex::leaf, "G1 Root Scanning barrier lock", false, Monitor::_safepoint_check_never),
     _n_workers_discovered_strong_classes(0) {}
 
+/**
+ * Tag : real work of STW Young GC
+ * 
+ * [?] 3 functions:
+ *  a. STW Young GC
+ *  b. Initial Marking
+ *  c. Mixed Cleanup
+ * 
+ * [?] Scan from stack variables ?
+ * 
+ */
 void G1RootProcessor::evacuate_roots(G1ParScanThreadState* pss, uint worker_i) {
   G1GCPhaseTimes* phase_times = _g1h->g1_policy()->phase_times();
 
   G1EvacPhaseTimesTracker timer(phase_times, pss, G1GCPhaseTimes::ExtRootScan, worker_i);
 
   G1EvacuationRootClosures* closures = pss->closures();
-  process_java_roots(closures, phase_times, worker_i);
+  process_java_roots(closures, phase_times, worker_i);  // stack variables of Java application ?
 
   // This is the point where this worker thread will not find more strong CLDs/nmethods.
   // Report this so G1 can synchronize the strong and weak CLDs/nmethods processing.
@@ -89,8 +100,8 @@ void G1RootProcessor::evacuate_roots(G1ParScanThreadState* pss, uint worker_i) {
     worker_has_discovered_all_strong_classes();
   }
 
-  process_vm_roots(closures, phase_times, worker_i);
-  process_string_table_roots(closures, phase_times, worker_i);
+  process_vm_roots(closures, phase_times, worker_i);    // stack variables of VM ?
+  process_string_table_roots(closures, phase_times, worker_i); // [?] Handle Strings seperately ??
 
   {
     // Now the CM ref_processor roots.
@@ -216,6 +227,12 @@ void G1RootProcessor::process_all_roots_no_string_table(OopClosure* oops,
   process_all_roots(oops, clds, blobs, false);
 }
 
+/**
+ * Tag : STW Young GC, tracing from Java applications
+ * 
+ * [?] What's the cldg/clds ??
+ * 
+ */
 void G1RootProcessor::process_java_roots(G1RootClosures* closures,
                                          G1GCPhaseTimes* phase_times,
                                          uint worker_i) {

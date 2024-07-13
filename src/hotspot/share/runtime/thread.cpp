@@ -871,6 +871,9 @@ bool Thread::claim_oops_do_par_case(int strong_roots_parity) {
   return false;
 }
 
+/**
+ * Tag : travers thread stack variables, base class ??
+ */
 void Thread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
   active_handles()->oops_do(f);
   // Do oop for ThreadShadow
@@ -2811,6 +2814,9 @@ class RememberProcessedThread: public StackObj {
   }
 };
 
+/**
+ * Tag : SWT Young GC, Scan Java thread (App)'s stack variables 
+ */
 void JavaThread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
   // Verify that the deferred card marks have been flushed.
   assert(deferred_card_mark().is_empty(), "Should be empty during GC");
@@ -2821,6 +2827,7 @@ void JavaThread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
   assert((!has_last_Java_frame() && java_call_counter() == 0) ||
          (has_last_Java_frame() && java_call_counter() > 0), "wrong java_sp info!");
 
+  // [?] Last Java frame, is this special ?
   if (has_last_Java_frame()) {
     // Record JavaThread to GC thread
     RememberProcessedThread rpt(this);
@@ -4469,6 +4476,9 @@ void Threads::assert_all_threads_claimed() {
 }
 #endif // ASSERT
 
+/**
+ * Tag : STW Young GC, tracing from Java app's stack variables
+ */
 class ParallelOopsDoThreadClosure : public ThreadClosure {
 private:
   OopClosure* _f;

@@ -61,6 +61,11 @@ G1BarrierSet::G1BarrierSet(G1CardTable* card_table) :
   _dirty_card_queue_set()
 {}
 
+
+/**
+ * Tag : mutator barrier set enqueue an oop ??
+ * 
+ */
 void G1BarrierSet::enqueue(oop pre_val) {
   // Nulls should have been already filtered.
   assert(oopDesc::is_oop(pre_val, true), "Error");
@@ -78,6 +83,13 @@ void G1BarrierSet::enqueue(oop pre_val) {
   }
 }
 
+
+/**
+ * Tag : enqueue object array dirty card via Write Barrier 
+ * 
+ * [?] For the object array, enqueue the target oop, not the &(field) ?
+ * 
+ */
 template <class T> void
 G1BarrierSet::write_ref_array_pre_work(T* dst, size_t count) {
   if (!_satb_mark_queue_set.is_active()) return;
@@ -102,19 +114,26 @@ void G1BarrierSet::write_ref_array_pre(narrowOop* dst, size_t count, bool dest_u
   }
 }
 
+/**
+ * Tag : enqueue dity card for object filed write via Write Barrier 
+ * 
+ * [?] What's the byte ??
+ *    byte array, store the flag value for the  
+ * 
+ */
 void G1BarrierSet::write_ref_field_post_slow(volatile jbyte* byte) {
   // In the slow path, we know a card is not young
   assert(*byte != G1CardTable::g1_young_card_val(), "slow path invoked without filtering");
   OrderAccess::storeload();
-  if (*byte != G1CardTable::dirty_card_val()) {
+  if (*byte != G1CardTable::dirty_card_val()) {  // dirty card, already enqueued ?
     *byte = G1CardTable::dirty_card_val();
     Thread* thr = Thread::current();
     if (thr->is_Java_thread()) {
-      G1ThreadLocalData::dirty_card_queue(thr).enqueue(byte);
+      G1ThreadLocalData::dirty_card_queue(thr).enqueue(byte);         // application, mutator thread 
     } else {
       MutexLockerEx x(Shared_DirtyCardQ_lock,
                       Mutex::_no_safepoint_check_flag);
-      _dirty_card_queue_set.shared_dirty_card_queue()->enqueue(byte);
+      _dirty_card_queue_set.shared_dirty_card_queue()->enqueue(byte);  // what's this ? not mutator ??
     }
   }
 }
@@ -195,6 +214,8 @@ void G1BarrierSet::on_thread_attach(JavaThread* thread) {
   // set the active field of the SATB queue to true.
   if (_satb_mark_queue_set.is_active()) {
     G1ThreadLocalData::satb_mark_queue(thread).set_active(true);
+    // Haoran: modify
+    G1ThreadLocalData::prefetch_queue(thread).set_active(true);
   }
 }
 

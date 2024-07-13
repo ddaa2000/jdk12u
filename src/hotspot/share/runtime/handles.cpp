@@ -105,6 +105,12 @@ static uintx chunk_oops_do(OopClosure* f, Chunk* chunk, char* chunk_top) {
 // Used for debugging handle allocation.
 NOT_PRODUCT(jint _nof_handlemarks  = 0;)
 
+/**
+ * Tag 
+ * 
+ * [?]meaning of the Chunk ? region ?
+ * 
+ */
 void HandleArea::oops_do(OopClosure* f) {
   uintx handles_visited = 0;
   // First handle the current chunk. It is filled to the high water mark.

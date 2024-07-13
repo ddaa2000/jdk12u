@@ -90,6 +90,14 @@ void G1ConcurrentRefineThread::deactivate() {
   }
 }
 
+
+
+/**
+ * Tag ？？
+ * 
+ * [?] What's the purpose of this service ???
+ * 
+ */
 void G1ConcurrentRefineThread::run_service() {
   _vtime_start = os::elapsedVTime();
 

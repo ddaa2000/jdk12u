@@ -960,6 +960,14 @@ void G1Policy::update_survivors_policy() {
                                _g1h->num_free_or_available_regions());
 }
 
+
+/**
+ * Tag : Check if we can trigger the Intial Marking Phase for a CM GC.
+ * 
+ * Prerequisite
+ *    [?] ?      
+ * 
+ */
 bool G1Policy::force_initial_mark_if_outside_cycle(GCCause::Cause gc_cause) {
   // We actually check whether we are marking here and not if we are in a
   // reclamation phase. This means that we will schedule a concurrent mark
@@ -980,6 +988,13 @@ void G1Policy::initiate_conc_mark() {
   collector_state()->set_initiate_conc_mark_if_possible(false);
 }
 
+
+/**
+ * Tag : Decide if we need to start the Initial Mark Phase
+ * 
+ * [?] The conditions ?
+ *     If the heap occupancy exceeds the initiating threshold ?
+ */
 void G1Policy::decide_on_conc_mark_initiation() {
   // We are about to decide on whether this pause will be an
   // initial-mark pause.
@@ -995,6 +1010,10 @@ void G1Policy::decide_on_conc_mark_initiation() {
     // gone over the initiating threshold and we should start a
     // concurrent marking cycle. So we might initiate one.
 
+    //
+    // [?] User can force requesting a intial GC ?
+    //    Aboart the coming mixed phase ?
+    //
     if (!about_to_start_mixed_phase() && collector_state()->in_young_only_phase()) {
       // Initiate a new initial mark if there is no marking or reclamation going on.
       initiate_conc_mark();

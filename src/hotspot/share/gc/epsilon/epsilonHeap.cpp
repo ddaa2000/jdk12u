@@ -341,3 +341,12 @@ void EpsilonHeap::print_metaspace_info() const {
     log_info(gc, metaspace)("Metaspace: no reliable data");
   }
 }
+
+
+
+// debug - prefetch
+void EpsilonHeap::prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param ){
+
+  guarantee(false, "%s, Can NOT reach here.\n",__func__);
+
+}

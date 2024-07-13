@@ -1803,6 +1803,32 @@ public final class System {
         Runtime.getRuntime().gc();
     }
 
+
+    /**
+     * Debug - Add a JNI call into class java.lang.System
+     * 
+     */
+    public static void test() {
+        Runtime.getRuntime().test();
+    }
+
+    /**
+     * Debug - Pass an object into the JNI call
+     * 
+     * @param   obj1   The 1st object instance, passed from application.
+     * @param   obj2   The 2nd object instance, passed from application.
+     * @param   obj3   The 3rd object instance, passed from application.
+     * @param   obj4   The 4th object instance, passed from application.
+     * @param   obj5   The 5th object instance, passed from application.
+     * @param   num_of_valid_param   the number of valide object parameters. Otehrs are NULL.
+     * 
+     */
+    public static void testWithParameter(Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, int num_of_valid_param) {
+        Runtime.getRuntime().testWithParameter(obj1, obj2, obj3, obj4, obj5, num_of_valid_param);
+    }
+
+
+
     /**
      * Runs the finalization methods of any objects pending finalization.
      *

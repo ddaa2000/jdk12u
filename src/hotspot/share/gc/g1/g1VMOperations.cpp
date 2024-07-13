@@ -73,6 +73,28 @@ bool VM_G1CollectForAllocation::doit_prologue() {
   return res;
 }
 
+
+/**
+ * Tag
+ * 
+ * [?] Entry of Concurrent  marking ?
+ * 
+ * 
+ * [?] Try to allocate objects and regions agian, before trigger the Concurrent GC ?
+ * 
+ * 
+ * More Explanation
+ * 
+ * 
+ * [?] The concurrent GC trigger ?
+ * _should_initiate_conc_mark == fale  ?
+ *    OR
+ * g1h->should_do_concurrent_full_gc(_gc_cause) == true ?
+ * 
+ * 
+ * [?] _word_size ? allocation word size ??
+ * 
+ */
 void VM_G1CollectForAllocation::doit() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   assert(!_should_initiate_conc_mark || g1h->should_do_concurrent_full_gc(_gc_cause),
@@ -90,10 +112,17 @@ void VM_G1CollectForAllocation::doit() {
     }
   }
 
+  //
+  // Prepare to trigger a Concurrent Full GC.
+  // [?] Concurrent Full GC is only for a collection set in the old Gen ??
+  
+  // 1) Trigger the Initial Marking Phase 
+  //    [?] Update the RemSet to the Collection Set in the Old Gen ??    
+  //    
   GCCauseSetter x(g1h, _gc_cause);
   if (_should_initiate_conc_mark) {
     // It's safer to read old_marking_cycles_completed() here, given
-    // that noone else will be updating it concurrently. Since we'll
+    // that none else will be updating it concurrently. Since we'll
     // only need it if we're initiating a marking cycle, no point in
     // setting it earlier.
     _old_marking_cycles_completed_before = g1h->old_marking_cycles_completed();
@@ -130,8 +159,20 @@ void VM_G1CollectForAllocation::doit() {
   }
 
   // Try a partial collection of some kind.
+  // 2) Intial Marking Phase, piggybacked by a STW Young GC
+  //
+  //  [?] set _target_pause_time_ms in Intial Marking Phase ?  
+  //
+  //  [?] This is also the Clean Up phase ?
+  //   => There should be no need to do tracing in Concurrent Marking Clean Up phase ??
+  //      But the STW Young GC is a Scan-> Evacuate procedure, they can't be the same procedure.
+  //
   _gc_succeeded = g1h->do_collection_pause_at_safepoint(_target_pause_time_ms);
 
+  // 3) Try to allocate objects again,
+  //    Or
+  //    Trigger a SWT Full GC [?]
+  //
   if (_gc_succeeded) {
     if (_word_size > 0) {
       // An allocation had been requested. Do it, eventually trying a stronger
@@ -200,6 +241,18 @@ void VM_G1CollectForAllocation::doit_epilogue() {
   }
 }
 
+/**
+ * Tag : 
+ * 
+ * [?] which phase of the Concurrent Marking ??
+ * a. Root Region scan
+ * b. Concurrent Mark
+ * c. Remark
+ * d. Clean up
+ * 
+ * 
+ * 
+ */
 void VM_G1Concurrent::doit() {
   GCIdMark gc_id_mark(_gc_id);
   GCTraceCPUTime tcpu;

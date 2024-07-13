@@ -35,6 +35,22 @@
 #include "runtime/prefetch.inline.hpp"
 #include "utilities/align.hpp"
 
+
+
+/**
+ * Tag : allocate object into a G1 Heap region
+ * 
+ * [?] Is this region thread local ??
+ * 
+ * Can't find any lock ?
+ * 
+ * 
+ * x.Region Architecture:
+ * G1ContiguousSpace   ----> CompactibleSpace  ---> Space  --> CHeapObj
+ *  =>top(Allocate pointer)                          =>_bottom
+ *                                                   =>_end
+ * 
+ */
 inline HeapWord* G1ContiguousSpace::allocate_impl(size_t min_word_size,
                                                   size_t desired_word_size,
                                                   size_t* actual_size) {
@@ -52,6 +68,13 @@ inline HeapWord* G1ContiguousSpace::allocate_impl(size_t min_word_size,
   }
 }
 
+
+/**
+ * Tag : concurrent object allocation in a G1 Heap Region
+ * 
+ * While loop + Atomic::cmpxchg(new_val, mem/dest_var, cmp/old_val)
+ * 
+ */
 inline HeapWord* G1ContiguousSpace::par_allocate_impl(size_t min_word_size,
                                                       size_t desired_word_size,
                                                       size_t* actual_size) {
@@ -297,6 +320,19 @@ bool HeapRegion::do_oops_on_card_in_humongous(MemRegion mr,
   return true;
 }
 
+
+/**
+ * Tag : Scan a specific card/MemRegion of this HeapRegion
+ *  
+ * The real action of handling the oop is based on the Closure definition.
+ * 
+ * [x] Confirm this heap region follow the rules:
+ *     parsable, // not stale
+ *     old region,
+ *     card is valid,
+ *         => Not exceed HeapRegion->scan_limit
+ *         => card is dirty
+ */
 template <bool is_gc_active, class Closure>
 bool HeapRegion::oops_on_card_seq_iterate_careful(MemRegion mr,
                                                   Closure* cl) {
@@ -332,11 +368,12 @@ bool HeapRegion::oops_on_card_seq_iterate_careful(MemRegion mr,
            "start: " PTR_FORMAT ", next: " PTR_FORMAT, p2i(start), p2i(next));
   }
 #endif
-
-  const G1CMBitMap* const bitmap = g1h->concurrent_mark()->prev_mark_bitmap();
+  //[?] use pre_mark_bitmap to detect if the object is dead ?
+  //    pre_mark_bitmap is the results of last cm marking ?
+  const G1CMBitMap* const bitmap = g1h->concurrent_mark()->prev_mark_bitmap(); 
   do {
     oop obj = oop(cur);
-    assert(oopDesc::is_oop(obj, true), "Not an oop at " PTR_FORMAT, p2i(cur));
+    assert(oopDesc::is_oop(obj, true), "Not an oop at " PTR_FORMAT, p2i(cur));   // Debug, confirm this card isn't stale. oop are parsable.
     assert(obj->klass_or_null() != NULL,
            "Unparsable heap at " PTR_FORMAT, p2i(cur));
 

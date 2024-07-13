@@ -60,11 +60,19 @@ inline bool G1ConcurrentMark::mark_in_next_bitmap(uint const worker_id, oop cons
   return mark_in_next_bitmap(worker_id, hr, obj);
 }
 
+/**
+ * Tag : mark this object alive in the region's next_bitmap
+ * 
+ *  [?] Purpose? 
+ *  => Used for Remark Phase. 
+ *  Tell the region that there are new allocated objects since last Concurrent Full Marking ?
+ * 
+ */
 inline bool G1ConcurrentMark::mark_in_next_bitmap(uint const worker_id, HeapRegion* const hr, oop const obj) {
   assert(hr != NULL, "just checking");
   assert(hr->is_in_reserved(obj), "Attempting to mark object at " PTR_FORMAT " that is not contained in the given region %u", p2i(obj), hr->hrm_index());
 
-  if (hr->obj_allocated_since_next_marking(obj)) {
+  if (hr->obj_allocated_since_next_marking(obj)) {  // [?] if ture, this shoud be error ?
     return false;
   }
 
@@ -74,7 +82,7 @@ inline bool G1ConcurrentMark::mark_in_next_bitmap(uint const worker_id, HeapRegi
 
   HeapWord* const obj_addr = (HeapWord*)obj;
 
-  bool success = _next_mark_bitmap->par_mark(obj_addr);
+  bool success = _next_mark_bitmap->par_mark(obj_addr);   // [?] Mark obj alive in current 
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
   }

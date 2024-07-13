@@ -326,6 +326,8 @@ void DirtyCardQueueSet::concatenate_log(DirtyCardQueue& dcq) {
   }
 }
 
+// Tag : Thread local DirtyCard queue to BarrierSet global DirtyCard queue
+// 
 void DirtyCardQueueSet::concatenate_logs() {
   // Iterate over all the threads, if we find a partial log add it to
   // the global list of logs.  Temporarily turn off the limit on the number

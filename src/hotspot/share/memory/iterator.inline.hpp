@@ -344,7 +344,13 @@ public:
 template <typename OopClosureType>
 typename OopOopIterateBoundedDispatch<OopClosureType>::Table OopOopIterateBoundedDispatch<OopClosureType>::_table;
 
-
+/**
+ * Tag : The abstract for oops closure work.
+ *       Each kind of class should implement this abstract:
+ *       : oop_oop_iterate_reverse<T>(oop, OopClosureType*)
+ *       : init 
+ * 
+ */
 template <typename OopClosureType>
 class OopOopIterateBackwardsDispatch {
 private:
@@ -415,6 +421,10 @@ void OopIteratorClosureDispatch::oop_oop_iterate(OopClosureType* cl, oop obj, Kl
   OopOopIterateBoundedDispatch<OopClosureType>::function(klass)(cl, obj, klass, mr);
 }
 
+/**
+ * Tag : Find the appropriate functions to traverse the object's fields.
+ * 
+ */
 template <typename OopClosureType>
 void OopIteratorClosureDispatch::oop_oop_iterate_backwards(OopClosureType* cl, oop obj, Klass* klass) {
   OopOopIterateBackwardsDispatch<OopClosureType>::function(klass)(cl, obj, klass);

@@ -28,6 +28,10 @@
 #include "utilities/align.hpp"
 #include "utilities/sizes.hpp"
 
+// Haoran: modify
+class PrefetchQueue;
+
+
 class Mutex;
 
 // There are various techniques that require threads to be able to log
@@ -39,6 +43,8 @@ class BufferNode;
 class PtrQueueSet;
 class PtrQueue {
   friend class VMStructs;
+  // Haoran: modify
+    friend class PrefetchQueue;
 
   // Noncopyable - not defined.
   PtrQueue(const PtrQueue&);
@@ -59,12 +65,16 @@ class PtrQueue {
   // capacity_in_bytes (indicating an empty buffer) and goes towards zero.
   // Value is always pointer-size aligned.
   size_t _index;
+    // Haoran: modify
+    size_t _tail;
+
+
 
   // Size of the current buffer, in bytes.
   // Value is always pointer-size aligned.
   size_t _capacity_in_bytes;
 
-  static const size_t _element_size = sizeof(void*);
+  static const size_t _element_size = sizeof(void*);  // byte size for pointer, 8 bytes at x86_64
 
   // Get the capacity, in bytes.  The capacity must have been set.
   size_t capacity_in_bytes() const {
@@ -90,7 +100,7 @@ class PtrQueue {
   }
 
 protected:
-  // The buffer.
+  // The buffer, the actual content 
   void** _buf;
 
   size_t index() const {
@@ -132,6 +142,8 @@ public:
   void reset() {
     if (_buf != NULL) {
       _index = capacity_in_bytes();
+      // Haoran: modify
+          _tail = capacity();
     }
   }
 

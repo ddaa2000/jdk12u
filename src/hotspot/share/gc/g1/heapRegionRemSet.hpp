@@ -77,7 +77,7 @@ class OtherRegionsTable {
   size_t      _n_coarse_entries;
   static jint _n_coarsenings;
 
-  PerRegionTable** _fine_grain_regions;
+  PerRegionTable** _fine_grain_regions;  // The fine grained Card Table entry
   size_t           _n_fine_entries;
 
   // The fine grain remembered sets are doubly linked together using
@@ -157,6 +157,13 @@ public:
   void clear();
 };
 
+
+/**
+ * Tag : How to use the HeapRegionRemSet ?
+ * 
+ * some local byte arrary ??
+ * 
+ */
 class HeapRegionRemSet : public CHeapObj<mtGC> {
   friend class VMStructs;
   friend class HeapRegionRemSetIterator;
@@ -170,7 +177,7 @@ private:
 
   Mutex _m;
 
-  OtherRegionsTable _other_regions;
+  OtherRegionsTable _other_regions;   // [?] which region ?
 
   HeapRegion* _hr;
 
@@ -204,6 +211,10 @@ public:
   static jint n_coarsenings() { return OtherRegionsTable::n_coarsenings(); }
 
 private:
+
+  // Both Mutator and GC Dirty Cards should be put into HeapRegion->RemSet ?
+  // [?] Meaning of the RemSet state ?
+  //
   enum RemSetState {
     Untracked,
     Updating,
@@ -251,19 +262,19 @@ public:
   // Used in the parallel case.
   void add_reference(OopOrNarrowOopStar from, uint tid) {
     RemSetState state = _state;
-    if (state == Untracked) {
+    if (state == Untracked) {    // [?] Will this cause error ?
       return;
     }
 
     uint cur_idx = _hr->hrm_index();
     uintptr_t from_card = uintptr_t(from) >> CardTable::card_shift;
 
-    if (G1FromCardCache::contains_or_replace(tid, cur_idx, from_card)) {
+    if (G1FromCardCache::contains_or_replace(tid, cur_idx, from_card)) {  // [?] This card is already in card cache ?
       assert(contains_reference(from), "We just found " PTR_FORMAT " in the FromCardCache", p2i(from));
       return;
     }
 
-    _other_regions.add_reference(from, tid);
+    _other_regions.add_reference(from, tid);  // This is a new dirty card ??
   }
 
   // The region is being reclaimed; clear its remset, and any mention of

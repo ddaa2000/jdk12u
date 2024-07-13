@@ -27,6 +27,9 @@
 
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1ConcurrentMark.inline.hpp"
+// Haoran: modify
+#include "gc/g1/g1ConcurrentPrefetch.inline.hpp"
+
 #include "gc/g1/g1OopClosures.hpp"
 #include "gc/g1/g1ParScanThreadState.inline.hpp"
 #include "gc/g1/g1RemSet.hpp"
@@ -64,15 +67,40 @@ template <class T>
 inline void G1ScanClosureBase::handle_non_cset_obj_common(InCSetState const state, T* p, oop const obj) {
   if (state.is_humongous()) {
     _g1h->set_humongous_is_live(obj);
-  } else if (state.is_optional()) {
-    _par_scan_state->remember_reference_into_optional_region(p);
-  }
+  } else if (state.is_optional()) {      // [?] optional region should be in CSet ???
+    _par_scan_state->remember_reference_into_optional_region(p);  // push this field into corresponding optional_region's queue
+  }   
+  // [?] If the target object isn't in optional_region, just ignore it ?
+  //
 }
 
 inline void G1ScanClosureBase::trim_queue_partially() {
   _par_scan_state->trim_queue_partially();
 }
 
+
+/**
+ * Tag : Closure scan and evacate alive objects from object fields. 
+ * 
+ * Parameter
+ *     Class T : CompressOop* or NormalOop* ?
+ *     T* p     : usualy the oop* : address of the filed,  &(filed)
+ * 
+ * More Explanation
+ * 
+ * The Mark logic :
+ * if the target oop in CSet
+ *     Push the &(field) into  scan queue
+ * else   // target oop isn't in CSet
+ *     if target oop is  Humongous Obj
+ *         Mark it alive & Handle it specially
+ *     else if : this is a cross-region ref && source (p) is in Old
+ *         Enqueue the card of &(field) to a G1ThreadLocalData->DirtyCardQueue
+ * 
+ * 
+ * [?] How to handle the Young --> Old(Not in CSet) reference ?
+ * 
+ */
 template <class T>
 inline void G1ScanEvacuatedObjClosure::do_oop_work(T* p) {
   T heap_oop = RawAccess<>::oop_load(p);
@@ -80,16 +108,26 @@ inline void G1ScanEvacuatedObjClosure::do_oop_work(T* p) {
   if (CompressedOops::is_null(heap_oop)) {
     return;
   }
-  oop obj = CompressedOops::decode_not_null(heap_oop);
+  oop obj = CompressedOops::decode_not_null(heap_oop);  // The target oop
   const InCSetState state = _g1h->in_cset_state(obj);
+
   if (state.is_in_cset()) {
+    // 1) Target oop is in CSet, push &(field) into parallel scan & evacuate queue    
     prefetch_and_push(p, obj);
   } else if (!HeapRegion::is_in_same_region(p, obj)) {
+    // 2) Target oop is NOT in CSet. (It's no Old space or survivor region)
     handle_non_cset_obj_common(state, p, obj);
     assert(_scanning_in_young != Uninitialized, "Scan location has not been initialized.");
-    if (_scanning_in_young == True) {
+
+    if (_scanning_in_young == True) {    // True or False, based on the location of source:p
       return;
     }
+
+    // 2) Enqueue a dirty card:
+    //     a. target oop isn't in CSet and && 
+    //     b. p->oop is a cross-region reference  &&
+    //    c. p is in Old space ()   // Should be in Optional Region, CSet
+    //          => [?] How to handle the Young --> Old(Not in CSet) reference ?
     _par_scan_state->enqueue_card_if_tracked(p, obj);
   }
 }
@@ -98,6 +136,15 @@ template <class T>
 inline void G1CMOopClosure::do_oop_work(T* p) {
   _task->deal_with_reference(p);
 }
+
+
+// Haoran: modify
+template <class T>
+inline void G1PFOopClosure::do_oop_work(T* p) {
+  _task->deal_with_reference(p);
+}
+
+
 
 template <class T>
 inline void G1RootRegionScanClosure::do_oop_work(T* p) {
@@ -130,13 +177,24 @@ inline static void check_obj_during_refinement(T* p, oop const obj) {
 #endif // ASSERT
 }
 
+
+/** 
+ * Tag : Transfer Mutator :G1BarrierSet->dirtyCard => HeapRegion->RemSet
+ * This is the procedure of tansfering Mutator dirty cards to HeapRegion RemSet.
+ * 
+ *   if NOT a cross-region reference
+ *     skip
+ *   else (cross-region)
+ *     Add this dirty card into target oop's HeapRegion->RemSet.
+ * 
+ */
 template <class T>
 inline void G1ConcurrentRefineOopClosure::do_oop_work(T* p) {
   T o = RawAccess<MO_VOLATILE>::oop_load(p);
   if (CompressedOops::is_null(o)) {
     return;
   }
-  oop obj = CompressedOops::decode_not_null(o);
+  oop obj = CompressedOops::decode_not_null(o);  // target oop
 
   check_obj_during_refinement(p, obj);
 
@@ -151,7 +209,7 @@ inline void G1ConcurrentRefineOopClosure::do_oop_work(T* p) {
     return;
   }
 
-  HeapRegionRemSet* to_rem_set = _g1h->heap_region_containing(obj)->rem_set();
+  HeapRegionRemSet* to_rem_set = _g1h->heap_region_containing(obj)->rem_set(); // HeapRegion->RemSet of target oop
 
   assert(to_rem_set != NULL, "Need per-region 'into' remsets.");
   if (to_rem_set->is_tracked()) {
@@ -159,13 +217,20 @@ inline void G1ConcurrentRefineOopClosure::do_oop_work(T* p) {
   }
 }
 
+
+/**
+ * Used during the Update RS phase to refine remaining cards in the DCQ during garbage collection.
+ * Tag : The closure of updating RemSet 
+ * 
+ * [?] How can this be possible ?  We only insert dirty cards when target oop are not in CSet?
+ */
 template <class T>
 inline void G1ScanObjsDuringUpdateRSClosure::do_oop_work(T* p) {
   T o = RawAccess<>::oop_load(p);
   if (CompressedOops::is_null(o)) {
     return;
   }
-  oop obj = CompressedOops::decode_not_null(o);
+  oop obj = CompressedOops::decode_not_null(o);  // target oop
 
   check_obj_during_refinement(p, obj);
 
@@ -181,6 +246,10 @@ inline void G1ScanObjsDuringUpdateRSClosure::do_oop_work(T* p) {
   }
 }
 
+/**
+ * Tag : Closure of scanning the RemSet of a HeapRegion
+ * 
+ */
 template <class T>
 inline void G1ScanObjsDuringScanRSClosure::do_oop_work(T* p) {
   T heap_oop = RawAccess<>::oop_load(p);
@@ -209,6 +278,14 @@ void G1ParCopyHelper::do_cld_barrier(oop new_obj) {
   }
 }
 
+/**
+ * Tag : mark objects in bitmap ?? not in RemSet ?
+ * 
+ * [?] The bitmap is used for remarking ?
+ *     => pre_bitmap,
+ *     => next_bitmap
+ * 
+ */
 void G1ParCopyHelper::mark_object(oop obj) {
   assert(!_g1h->heap_region_containing(obj)->in_collection_set(), "should not mark objects in the CSet");
 
@@ -220,6 +297,20 @@ void G1ParCopyHelper::trim_queue_partially() {
   _par_scan_state->trim_queue_partially();
 }
 
+/**
+ * Tag : Closure of Scanning alive objects from Stack variable 
+ * 
+ * 3 cases:
+ *   1) target object in Collection Set, do the tracing 
+ *  2) target object isn't in CS 
+ *     2.1) target object is a Humongous object, mark it alive and done ??
+ *    2.2) target object in Optional Region, do the optional tracing 
+ *    2.3) Intial Marking pahse, mark object alive in HeapRegion->_next_bitmap.
+ * 
+ * [x] Should update the RemSet here ?
+ *   => No. Only mark the alive objects in HeapRegion->next_bitmap.
+ * 
+ */
 template <G1Barrier barrier, G1Mark do_mark_object>
 template <class T>
 void G1ParCopyClosure<barrier, do_mark_object>::do_oop_work(T* p) {
@@ -229,12 +320,13 @@ void G1ParCopyClosure<barrier, do_mark_object>::do_oop_work(T* p) {
     return;
   }
 
-  oop obj = CompressedOops::decode_not_null(heap_oop);
+  oop obj = CompressedOops::decode_not_null(heap_oop);  // get the instance address of the target obj
 
   assert(_worker_id == _par_scan_state->worker_id(), "sanity");
 
-  const InCSetState state = _g1h->in_cset_state(obj);
-  if (state.is_in_cset()) {
+  const InCSetState state = _g1h->in_cset_state(obj);   // the address of the target obj, Young(CSet) or Old. 
+  if (state.is_in_cset()) { 
+    // a. Target object is in CSet.
     oop forwardee;
     markOop m = obj->mark_raw();
     if (m->is_marked()) {
@@ -243,22 +335,25 @@ void G1ParCopyClosure<barrier, do_mark_object>::do_oop_work(T* p) {
       forwardee = _par_scan_state->copy_to_survivor_space(state, obj, m);
     }
     assert(forwardee != NULL, "forwardee should not be NULL");
-    RawAccess<IS_NOT_NULL>::oop_store(p, forwardee);
+    RawAccess<IS_NOT_NULL>::oop_store(p, forwardee);   // Update the field's reference to the new address of target object.
 
-    if (barrier == G1BarrierCLD) {
+    if (barrier == G1BarrierCLD) {   // [?] What's this ?? 
       do_cld_barrier(forwardee);
     }
   } else {
+    // b. Target object isn't in CSet.
     if (state.is_humongous()) {
-      _g1h->set_humongous_is_live(obj);
+      _g1h->set_humongous_is_live(obj);     // Handle the humongous objects seperately 
     } else if (state.is_optional()) {
-      _par_scan_state->remember_root_into_optional_region(p);
+      _par_scan_state->remember_root_into_optional_region(p); //the target obj is in Old Region, CSet, push it into optional_region queue.
     }
 
+    // b.3 target object isn't in CSet, nor humongous object, nor in optional region.
+    //      Mark it in the region's next_bitmap.
     // The object is not in collection set. If we're a root scanning
     // closure during an initial mark pause then attempt to mark the object.
-    if (do_mark_object == G1MarkFromRoot) {
-      mark_object(obj);
+    if (do_mark_object == G1MarkFromRoot) {     // [?] If this is an initial phase ??
+      mark_object(obj);                          //  Mark object in HeapRegion->next_bitmap 
     }
   }
   trim_queue_partially();

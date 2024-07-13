@@ -346,6 +346,15 @@ CardIdx_t OtherRegionsTable::card_within_region(OopOrNarrowOopStar within_region
   return result;
 }
 
+
+/**
+ * Tag : add a dirty card into HeapRegion->RemSet
+ * 
+ * 3 levels for a HeapRegion->RemSet
+ *    fine  : card ?  PerRegionTable, 
+ *    corse : region level ?   _coarse_map
+ *   sparse : card ?  _sparse_table
+ */
 void OtherRegionsTable::add_reference(OopOrNarrowOopStar from, uint tid) {
   // Note that this may be a continued H region.
   HeapRegion* from_hr = _g1h->heap_region_containing(from);
@@ -359,7 +368,7 @@ void OtherRegionsTable::add_reference(OopOrNarrowOopStar from, uint tid) {
 
   // Otherwise find a per-region table to add it to.
   size_t ind = from_hrm_ind & _mod_max_fine_entries_mask;
-  PerRegionTable* prt = find_region_table(ind, from_hr);
+  PerRegionTable* prt = find_region_table(ind, from_hr);  // This HeapRegion has no fine level table ?
   if (prt == NULL) {
     MutexLockerEx x(_m, Mutex::_no_safepoint_check_flag);
     // Confirm that it's really not there...
@@ -368,6 +377,7 @@ void OtherRegionsTable::add_reference(OopOrNarrowOopStar from, uint tid) {
 
       CardIdx_t card_index = card_within_region(from, from_hr);
 
+      // Record corss-region in Spark_table ?
       if (_sparse_table.add_card(from_hrm_ind, card_index)) {
         assert(contains_reference_locked(from), "We just added " PTR_FORMAT " to the Sparse table", p2i(from));
         return;
@@ -414,7 +424,7 @@ void OtherRegionsTable::add_reference(OopOrNarrowOopStar from, uint tid) {
   // OtherRegionsTable for why this is OK.
   assert(prt != NULL, "Inv");
 
-  prt->add_reference(from);
+  prt->add_reference(from);  // Add this difty card into Fine level
   assert(contains_reference(from), "We just added " PTR_FORMAT " to the PRT (%d)", p2i(from), prt->contains_reference(from));
 }
 

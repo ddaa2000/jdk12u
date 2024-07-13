@@ -147,6 +147,8 @@ private:
   // humongous regions outside the collection set.
   // This is valid because we are not interested in scanning stray remembered set
   // entries from free or archive regions.
+  // [?] Is this just the top value of each HeapRegion ??
+  //    If so, why not access heapregion->top directlty ?
   HeapWord** _scan_top;
 public:
   G1RemSetScanState() :
@@ -241,19 +243,25 @@ public:
     return Atomic::add(step, &_iter_claims[region]) - step;
   }
 
+  /**
+   * Tag : purpose and usage ?
+   * 
+   */
   void add_dirty_region(uint region) {
-    if (_in_dirty_region_buffer[region] == Dirty) {
+    if (_in_dirty_region_buffer[region] == Dirty) { // This region is alreay marked dirty by other threads, and they will handle this region?
       return;
     }
 
     bool marked_as_dirty = Atomic::cmpxchg(Dirty, &_in_dirty_region_buffer[region], Clean) == Clean;
-    if (marked_as_dirty) {
+    if (marked_as_dirty) {  // dirty  0, clean 1
       size_t allocated = Atomic::add(1u, &_cur_dirty_region) - 1;
       _dirty_region_buffer[allocated] = region;
     }
   }
 
-  HeapWord* scan_top(uint region_idx) const {
+  // [?] definition of _scan_top ?
+  //  => record the scanned range: [bottom, _scan_top[region_idx]) has already been scanned. 
+  HeapWord* scan_top(uint region_idx) const {   
     return _scan_top[region_idx];
   }
 
@@ -336,12 +344,20 @@ void G1ScanRSForRegionClosure::claim_card(size_t card_index, const uint region_i
 
 void G1ScanRSForRegionClosure::scan_card(MemRegion mr, uint region_idx_for_card) {
   HeapRegion* const card_region = _g1h->region_at(region_idx_for_card);
-  assert(!card_region->is_young(), "Should not scan card in young region %u", region_idx_for_card);
+  assert(!card_region->is_young(), "Should not scan card in young region %u", region_idx_for_card);  // [?] how to handle young -> old ??
   card_region->oops_on_card_seq_iterate_careful<true>(mr, _scan_objs_on_card_cl);
   _scan_objs_on_card_cl->trim_queue_partially();
   _cards_scanned++;
 }
 
+
+/**
+ * Tag : scan the RemSet for current HeapRegion in parallel.
+ * 
+ * [?] Why do we need to mark this region as dirty ?
+ *     What's the meaning of "dirty" for a region ?
+ * 
+ */
 void G1ScanRSForRegionClosure::scan_rem_set_roots(HeapRegion* r) {
   EventGCPhaseParallel event;
   uint const region_idx = r->hrm_index();
@@ -413,6 +429,12 @@ void G1ScanRSForRegionClosure::scan_strong_code_roots(HeapRegion* r) {
   event.commit(GCId::current(), _worker_i, G1GCPhaseTimes::phase_name(G1GCPhaseTimes::CodeRoots));
 }
 
+
+
+/**
+ * Tag : Scan the RemSet of a HeapRegion
+ * 
+ */
 bool G1ScanRSForRegionClosure::do_heap_region(HeapRegion* r) {
   assert(r->in_collection_set(),
          "Should only be called on elements of the collection set but region %u is not.",
@@ -432,11 +454,17 @@ bool G1ScanRSForRegionClosure::do_heap_region(HeapRegion* r) {
   if (_scan_state->set_iter_complete(region_idx)) {
     G1EvacPhaseWithTrimTimeTracker timer(_pss, _strong_code_root_scan_time, _strong_code_trim_partially_time);
     // Scan the strong code root list attached to the current region
-    scan_strong_code_roots(r);
+    scan_strong_code_roots(r);   // [?] What's this ??
   }
   return false;
 }
 
+/**
+ * Tag :
+ * 
+ *  [?] Main purpose ?
+ * 
+ */
 void G1RemSet::scan_rem_set(G1ParScanThreadState* pss, uint worker_i) {
   G1ScanObjsDuringScanRSClosure scan_cl(_g1h, pss);
   G1ScanRSForRegionClosure cl(_scan_state, &scan_cl, pss, G1GCPhaseTimes::ScanRS, worker_i);
@@ -477,7 +505,7 @@ public:
     bool card_scanned = _g1rs->refine_card_during_gc(card_ptr, _update_rs_cl);
 
     if (card_scanned) {
-      _update_rs_cl->trim_queue_partially();
+      _update_rs_cl->trim_queue_partially();  // if current card is refined, why do we need to scan it agian ?
       _cards_scanned++;
     } else {
       _cards_skipped++;
@@ -489,10 +517,23 @@ public:
   size_t cards_skipped() const { return _cards_skipped; }
 };
 
+
+/**
+ * Tag : Scan the recorded dirty cards to update the RemSet of each ? HeapRegion?
+ * 
+ * Dirty Card : recorded during Intial marking phase.
+ * 
+ * [?] We have 3 structures now:
+ *    2x bitmap,
+ *    DirtyCardQueue,
+ *    RemSet,
+ * 
+ */
 void G1RemSet::update_rem_set(G1ParScanThreadState* pss, uint worker_i) {
   G1GCPhaseTimes* p = _g1p->phase_times();
 
   // Apply closure to log entries in the HCC.
+  // HCC : Hot Card Cache : These cards are frequently modified. Try to delay to update/scan them.
   if (G1HotCardCache::default_use_cache()) {
     G1EvacPhaseTimesTracker x(p, pss, G1GCPhaseTimes::ScanHCC, worker_i);
 
@@ -514,13 +555,38 @@ void G1RemSet::update_rem_set(G1ParScanThreadState* pss, uint worker_i) {
   }
 }
 
+/**
+ * Tag : Update and Scan remember set
+ * 
+ * [x] Both mutator and GC should update Remember Set ?
+ *     Mutators use G1BarrierSet to record dirty cards into its Thread Local queue and G1BarrierSet global queue
+ *     Update RemSet needs to scan these Mutator DirtyCard queue and transfer them into GC Task local Dirty Card queue.
+ * 
+ * [?] What's the difference between : Update / Scan RemSet ?
+ * 
+ * [x] Dirty Card (512 bytes) mechainism: 
+ *     In order to fast record cross-region reference,
+ *     both Mutator and GC only marks the card containing cross-reference dirty.
+ *       a. Compare and Enqueue are fast.
+ *      b. If Mutator modified the same object's field multiple times, 
+ *          this mechanism prevents duplicated enqueue operation. 
+ *       c. Reduce the enqueue operation for the objects sharing the same card.
+ * 
+ * So, we need 2 phase:
+ *   Update_RemSet : Scan the enqueued dirty cards
+ *       => Evacuate the oops which is in CSet,
+ *       => Transfer dirty card to GC thread card queue
+ *   Scan_RemSet    : Trace the cross-region reference and mark the objects alive in HeapReaion->bitmap ?
+ * 
+ * 
+ */
 void G1RemSet::oops_into_collection_set_do(G1ParScanThreadState* pss, uint worker_i) {
   update_rem_set(pss, worker_i);
   scan_rem_set(pss, worker_i);;
 }
 
 void G1RemSet::prepare_for_oops_into_collection_set_do() {
-  DirtyCardQueueSet& dcqs = G1BarrierSet::dirty_card_queue_set();
+  DirtyCardQueueSet& dcqs = G1BarrierSet::dirty_card_queue_set();   // Mutator Global: G1BarrierSet->_dirty_card_queue_set
   dcqs.concatenate_logs();
 
   _scan_state->reset();
@@ -547,14 +613,40 @@ inline void check_card_ptr(jbyte* card_ptr, G1CardTable* ct) {
 #endif
 }
 
+/**
+ * Tag : Transfer dirty card from Mutator entries to HeapRegion entries concurrently.
+ * 
+ * This procesure is done when mutator threads is running.
+ * 
+ * [?] This card can only be in Old Region ? Even it's inserted by Mutator write barrier
+ * 
+ * [x] This card can already be evacauted when we iterate it?
+ *     => Yes.   i.e. this old region is put into CSet ?
+ * The conditions to out:
+ * 
+ * 
+ *   1) Evacated Region  
+ *   if HeapRegion* r == NULL
+ *       it's evacuated ?
+ *       return
+ * 
+ *  2) Already handled card  
+ *     if card is NOT dirty,
+ *       it's already handled,
+ *       return
+ * 
+ *  3) card start address > region->top 
+ *       [?] also evacated ??
+ * 
+ */
 void G1RemSet::refine_card_concurrently(jbyte* card_ptr,
                                         uint worker_i) {
   assert(!_g1h->is_gc_active(), "Only call concurrently");
 
   // Construct the region representing the card.
-  HeapWord* start = _ct->addr_for(card_ptr);
+  HeapWord* start = _ct->addr_for(card_ptr);      // Get card address based its card byte address
   // And find the region containing it.
-  HeapRegion* r = _g1h->heap_region_containing_or_null(start);
+  HeapRegion* r = _g1h->heap_region_containing_or_null(start);  // Get region addresss from card address.
 
   // If this is a (stale) card into an uncommitted region, exit.
   if (r == NULL) {
@@ -627,7 +719,7 @@ void G1RemSet::refine_card_concurrently(jbyte* card_ptr,
   // (part of) an object at the end of the allocated space and extend
   // beyond the end of allocation.
 
-  // Non-humongous objects are only allocated in the old-gen during
+  // Non-humongous objects are only allocated in the old-gen during    // [??] Can also be allocated into Survivor Space, right ??
   // GC, so if region is old then top is stable.  Humongous object
   // allocation sets top last; if top has not yet been set, this is
   // a stale card and we'll end up with an empty intersection.  If
@@ -663,7 +755,7 @@ void G1RemSet::refine_card_concurrently(jbyte* card_ptr,
   G1ConcurrentRefineOopClosure conc_refine_cl(_g1h, worker_i);
 
   bool card_processed =
-    r->oops_on_card_seq_iterate_careful<false>(dirty_region, &conc_refine_cl);
+    r->oops_on_card_seq_iterate_careful<false>(dirty_region, &conc_refine_cl);  // DO the action, scan the dirty
 
   // If unable to process the card then we encountered an unparsable
   // part of the heap (e.g. a partially allocated object) while
@@ -678,7 +770,7 @@ void G1RemSet::refine_card_concurrently(jbyte* card_ptr,
       MutexLockerEx x(Shared_DirtyCardQ_lock,
                       Mutex::_no_safepoint_check_flag);
       DirtyCardQueue* sdcq =
-        G1BarrierSet::dirty_card_queue_set().shared_dirty_card_queue();
+        G1BarrierSet::dirty_card_queue_set().shared_dirty_card_queue();   // Scan dirty card failed, enqueue it agian ?
       sdcq->enqueue(card_ptr);
     }
   } else {
@@ -686,6 +778,15 @@ void G1RemSet::refine_card_concurrently(jbyte* card_ptr,
   }
 }
 
+/**
+ * Tag ? refine ?
+ * 
+ * [?] What's the purpose of refine ?
+ *     Mark the HeapRegion containing this card as dirty, and rescan it ???
+ * 
+ * [?] Use a byte array to mange the tags for the card ?
+ * 
+ */
 bool G1RemSet::refine_card_during_gc(jbyte* card_ptr,
                                      G1ScanObjsDuringUpdateRSClosure* update_rs_cl) {
   assert(_g1h->is_gc_active(), "Only call during GC");
@@ -695,8 +796,8 @@ bool G1RemSet::refine_card_during_gc(jbyte* card_ptr,
   // And find the region containing it.
   uint const card_region_idx = _g1h->addr_to_region(card_start);
 
-  HeapWord* scan_limit = _scan_state->scan_top(card_region_idx);
-  if (scan_limit == NULL) {
+  HeapWord* scan_limit = _scan_state->scan_top(card_region_idx);   
+  if (scan_limit == NULL) {   // [?] uncommitted region ??
     // This is a card into an uncommitted region. We need to bail out early as we
     // should not access the corresponding card table entry.
     return false;
@@ -714,7 +815,7 @@ bool G1RemSet::refine_card_during_gc(jbyte* card_ptr,
   // number of potential duplicate scans (multiple threads may enqueue the same card twice).
   *card_ptr = G1CardTable::clean_card_val() | G1CardTable::claimed_card_val();
 
-  _scan_state->add_dirty_region(card_region_idx);
+  _scan_state->add_dirty_region(card_region_idx);  //[?] It only needs to scan the dirty card, why does it mark the whole region dirty ?
   if (scan_limit <= card_start) {
     // If the card starts above the area in the region containing objects to scan, skip it.
     return false;
@@ -726,9 +827,9 @@ bool G1RemSet::refine_card_during_gc(jbyte* card_ptr,
   MemRegion dirty_region(card_start, MIN2(scan_limit, card_end));
   assert(!dirty_region.is_empty(), "sanity");
 
-  HeapRegion* const card_region = _g1h->region_at(card_region_idx);
-  assert(!card_region->is_young(), "Should not scan card in young region %u", card_region_idx);
-  bool card_processed = card_region->oops_on_card_seq_iterate_careful<true>(dirty_region, update_rs_cl);
+  HeapRegion* const card_region = _g1h->region_at(card_region_idx); 
+  assert(!card_region->is_young(), "Should not scan card in young region %u", card_region_idx);  //[?] 
+  bool card_processed = card_region->oops_on_card_seq_iterate_careful<true>(dirty_region, update_rs_cl); //Why do we need to scan the whole region?
   assert(card_processed, "must be");
   return true;
 }
@@ -903,6 +1004,11 @@ class G1RebuildRemSetTask: public AbstractGangTask {
       return marked_words * HeapWordSize;
     }
 public:
+
+  /**
+   * Tag : what's this closure for ?
+   * 
+   */
   G1RebuildRemSetHeapRegionClosure(G1CollectedHeap* g1h,
                                    G1ConcurrentMark* cm,
                                    uint worker_id) :

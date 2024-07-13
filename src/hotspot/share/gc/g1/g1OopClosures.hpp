@@ -40,6 +40,11 @@ class G1ScanEvacuatedObjClosure;
 class G1CMTask;
 class ReferenceProcessor;
 
+
+
+class G1ConcurrentPrefetch;
+class G1PFTask;
+
 class G1ScanClosureBase : public BasicOopIterateClosure {
 protected:
   G1CollectedHeap* _g1h;
@@ -59,7 +64,13 @@ public:
   inline void trim_queue_partially();
 };
 
-// Used during the Update RS phase to refine remaining cards in the DCQ during garbage collection.
+
+/**
+ * Used during the Update RS phase to refine remaining cards in the DCQ during garbage collection.
+ * 
+ * [?] The closure of updating RemSet 
+ * 
+ */
 class G1ScanObjsDuringUpdateRSClosure : public G1ScanClosureBase {
 public:
   G1ScanObjsDuringUpdateRSClosure(G1CollectedHeap* g1h,
@@ -94,16 +105,25 @@ public:
   virtual void do_oop(narrowOop* p)    { do_oop_work(p); }
 };
 
-// This closure is applied to the fields of the objects that have just been copied during evacuation.
+/**
+ * This closure is applied to the fields of the objects that have just been copied during evacuation.
+ * Tag : Closure scan and evacate alive objects from object fields.
+ * 
+ */
 class G1ScanEvacuatedObjClosure : public G1ScanClosureBase {
   friend class G1ScanInYoungSetter;
 
+  // [?] Meaning of  these states ? Inital Phase or Normal STW Young GC ?
+  //
   enum ScanningInYoungValues {
     False = 0,
     True,
     Uninitialized
   };
 
+  // This value is initialized by  closure instance:
+  //     G1ScanEvacuatedObjClosure -> _scanning_in_young(Uninitialized)
+  //    G1ScanInYoungSetter        -> based on the parameters for the constructor. 
   ScanningInYoungValues _scanning_in_young;
 
 public:
@@ -172,6 +192,14 @@ enum G1Mark {
   G1MarkPromotedFromRoot
 };
 
+
+/**
+ * Tag : Closure of scanning alive objects from stack variable
+ * 
+ *   More Explanation
+ *     This isn't similar with Scaning object from the fields of target objects.
+ * 
+ */
 template <G1Barrier barrier, G1Mark do_mark_object>
 class G1ParCopyClosure : public G1ParCopyHelper {
 public:
@@ -205,6 +233,20 @@ public:
   virtual void do_oop(      oop* p) { do_oop_work(p); }
   virtual void do_oop(narrowOop* p) { do_oop_work(p); }
 };
+
+
+// Haoran: modify
+// Closure for iterating over object fields during concurrent marking
+class G1PFOopClosure : public MetadataVisitingOopIterateClosure {
+  G1CollectedHeap*   _g1h;
+  G1PFTask*          _task;
+public:
+  G1PFOopClosure(G1CollectedHeap* g1h,G1PFTask* task);
+  template <class T> void do_oop_work(T* p);
+  virtual void do_oop(      oop* p) { do_oop_work(p); }
+  virtual void do_oop(narrowOop* p) { do_oop_work(p); }
+};
+
 
 // Closure to scan the root regions during concurrent marking
 class G1RootRegionScanClosure : public MetadataVisitingOopIterateClosure {

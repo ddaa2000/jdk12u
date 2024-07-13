@@ -33,16 +33,21 @@ class DirtyCardQueueSet;
 class CardTable;
 class G1CardTable;
 
-// This barrier is specialized to use a logging barrier to support
-// snapshot-at-the-beginning marking.
 
+/**
+ * This barrier is specialized to use a logging barrier to support
+ * snapshot-at-the-beginning marking.
+ * 
+ * Tag [?] This Barrier should be used for Mutator
+ * 
+ */ 
 class G1BarrierSet: public CardTableBarrierSet {
   friend class VMStructs;
  private:
   BufferNode::Allocator _satb_mark_queue_buffer_allocator;
   BufferNode::Allocator _dirty_card_queue_buffer_allocator;
-  G1SATBMarkQueueSet _satb_mark_queue_set;
-  DirtyCardQueueSet _dirty_card_queue_set;
+  G1SATBMarkQueueSet _satb_mark_queue_set;      // Scan at the begining ?
+  DirtyCardQueueSet _dirty_card_queue_set;      // the global DirtyCard queue set for mutators thread local card queue
 
   static G1BarrierSet* g1_barrier_set() {
     return barrier_set_cast<G1BarrierSet>(BarrierSet::barrier_set());

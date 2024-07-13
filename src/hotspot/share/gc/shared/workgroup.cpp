@@ -329,6 +329,13 @@ void GangWorker::signal_task_done() {
   gang()->dispatcher()->worker_done_with_task();
 }
 
+/**
+ * Tag : GC task scheduler.
+ * 
+ * i.e.
+ * a. Concurrent Root Region Scan task sets.
+ * 
+ */
 void GangWorker::run_task(WorkData data) {
   GCIdMark gc_id_mark(data._task->gc_id());
   log_develop_trace(gc, workgang)("Running work gang: %s task: %s worker: %u", name(), data._task->name(), data._worker_id);

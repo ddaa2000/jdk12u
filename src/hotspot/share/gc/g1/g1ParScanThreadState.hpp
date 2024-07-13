@@ -43,11 +43,18 @@ class G1EvacuationRootClosures;
 class HeapRegion;
 class outputStream;
 
+/**
+ * Tag : GC Thread state 
+ * 
+ * Fields:
+ *    DirtyCardQueue   _dcq : The GC thread should have the same dirty card queue.
+ * 
+ */
 class G1ParScanThreadState : public CHeapObj<mtGC> {
   G1CollectedHeap* _g1h;
-  RefToScanQueue*  _refs;
-  DirtyCardQueue   _dcq;
-  G1CardTable*     _ct;
+  RefToScanQueue*  _refs;    // [?] StarTask, &(field) queue.
+  DirtyCardQueue   _dcq;    // A GC thread local dirty card queue.  It belongs GC global queue set: G1CollectedHeap->DirtyCardQueueSet
+  G1CardTable*     _ct;      // [x] The corresponding card table for the whole heap. Get from G1CollectedHeap->G1CardTable. 
   G1EvacuationRootClosures* _closures;
 
   G1PLABAllocator*  _plab_allocator;
@@ -77,8 +84,11 @@ class G1ParScanThreadState : public CHeapObj<mtGC> {
 
 #define PADDING_ELEM_NUM (DEFAULT_CACHE_LINE_SIZE / sizeof(size_t))
 
-  DirtyCardQueue& dirty_card_queue()             { return _dcq;  }
-  G1CardTable* ct()                              { return _ct; }
+  // Used to store "oop"
+  // DirtyCardQueue -> PtrQueue
+  // [?] What's connection between DirtyCardQueue and RemSet ??
+  DirtyCardQueue& dirty_card_queue()             { return _dcq;  }    // [?] This should be region based ??
+  G1CardTable* ct()                              { return _ct; }      // [?] RemSet use the card as entry ?
 
   InCSetState dest(InCSetState original) const {
     assert(original.is_valid(),
@@ -111,16 +121,36 @@ public:
   template <class T> void do_oop_ext(T* ref);
   template <class T> void push_on_queue(T* ref);
 
+
+  /**
+   * Tag : enqueue card(oop* p) into Dirty Card Queue
+   * 
+   * [x] Card size : Decided by BOTConstants::LogN ==9, 512 bytes
+   *    each card can contain many oops,
+   *     there can be partial oop in a card,
+   * 
+   * [x] enqueue dirty card in GC, field:p --> oop 
+   *    constraints:
+   *         oop is NOT in CSet,
+   *        p is in Old Space,
+   *        p and oop are not in the same region. 
+   * 
+   * 
+   * [?] What's connection of Card Table and RemSet ?
+   *      Use the dirty card set to update RemSet ??
+   *      So, dirty card only record cross-region reference 
+   * 
+   */
   template <class T> void enqueue_card_if_tracked(T* p, oop o) {
-    assert(!HeapRegion::is_in_same_region(p, o), "Should have filtered out cross-region references already.");
+    assert(!HeapRegion::is_in_same_region(p, o), "Should have filtered out cross-region references already.");  // ERR: filtered out intra-region ref.
     assert(!_g1h->heap_region_containing(p)->is_young(), "Should have filtered out from-young references already.");
-    if (!_g1h->heap_region_containing((HeapWord*)o)->rem_set()->is_tracked()) {
+    if (!_g1h->heap_region_containing((HeapWord*)o)->rem_set()->is_tracked()) {   // [?] Check the HeapRegionRemSet->rem_set()  first
       return;
     }
-    size_t card_index = ct()->index_for(p);
+    size_t card_index = ct()->index_for(p);   // Get the card which contains this field p.
     // If the card hasn't been added to the buffer, do it.
     if (ct()->mark_card_deferred(card_index)) {
-      dirty_card_queue().enqueue((jbyte*)ct()->byte_for_index(card_index));
+      dirty_card_queue().enqueue((jbyte*)ct()->byte_for_index(card_index));  // enqueue dirty_card into a thread local queue first.
     }
   }
 

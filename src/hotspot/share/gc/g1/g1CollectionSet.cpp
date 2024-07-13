@@ -83,6 +83,10 @@ G1CollectionSet::~G1CollectionSet() {
   delete _cset_chooser;
 }
 
+/**
+ * Tag : Build Collection Set ??
+ * 
+ */
 void G1CollectionSet::init_region_lengths(uint eden_cset_region_length,
                                           uint survivor_cset_region_length) {
   assert_at_safepoint_on_vm_thread();
@@ -124,7 +128,15 @@ void G1CollectionSet::set_recorded_rs_lengths(size_t rs_lengths) {
   _recorded_rs_lengths = rs_lengths;
 }
 
-// Add the heap region at the head of the non-incremental collection set
+/**
+ * Add the heap region at the head of the non-incremental collection set
+ * 
+ * Tag : Add an old region into Collection Set.
+ * 
+ * [?] This old region should be added into G1CollectionSet::_collection_set_regions[] ?
+ *    Should be added into G1CollectionSet::_optional_regions[] ?
+ * 
+ */
 void G1CollectionSet::add_old_region(HeapRegion* hr) {
   assert_at_safepoint_on_vm_thread();
 
@@ -141,7 +153,7 @@ void G1CollectionSet::add_old_region(HeapRegion* hr) {
   _bytes_used_before += hr->used();
   size_t rs_length = hr->rem_set()->occupied();
   _recorded_rs_lengths += rs_length;
-  _old_region_length += 1;
+  _old_region_length += 1;            // [?] Record the number of old regions in the Collection Set.
 
   log_trace(gc, cset)("Added old region %d to collection set", hr->hrm_index());
 }
@@ -394,6 +406,13 @@ void G1CollectionSet::print(outputStream* st) {
 }
 #endif // !PRODUCT
 
+
+/**
+ * Tag : Build the Young Space Collection Set ??
+ * 
+ * [?] Just merge eden, survivor into eden ?
+ * 
+ */
 double G1CollectionSet::finalize_young_part(double target_pause_time_ms, G1SurvivorRegions* survivors) {
   double young_start_time_sec = os::elapsedTime();
 
@@ -472,6 +491,10 @@ static int compare_region_idx(const uint a, const uint b) {
   }
 }
 
+/**
+ * Tag : Pick some regions and add them to Collection Set.
+ * 
+ */
 void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
   double non_young_start_time_sec = os::elapsedTime();
   double predicted_old_time_ms = 0.0;
@@ -479,6 +502,7 @@ void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
   double optional_threshold_ms = time_remaining_ms * _policy->optional_prediction_fraction();
   uint expensive_region_num = 0;
 
+  // Add old regions only when the next STW Young GC is in mixed mode.
   if (collector_state()->in_mixed_phase()) {
     cset_chooser()->verify();
     const uint min_old_cset_length = _policy->calc_min_old_cset_length();
@@ -490,6 +514,10 @@ void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
                               "time remaining %1.2fms, optional threshold %1.2fms",
                               min_old_cset_length, max_old_cset_length, time_remaining_ms, optional_threshold_ms);
 
+    //
+    // Choose some scanned old region into the Collection Set, which will be cleaned up by next STW Young GC.
+    // [?] These candidate regions are stored in CollectionSetChooser* _cset_chooser ??
+    //
     HeapRegion* hr = cset_chooser()->peek();
     while (hr != NULL) {
       if (old_region_length() + optional_region_length() >= max_old_cset_length) {

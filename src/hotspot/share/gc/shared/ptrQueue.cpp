@@ -38,6 +38,7 @@ PtrQueue::PtrQueue(PtrQueueSet* qset, bool permanent, bool active) :
   _active(active),
   _permanent(permanent),
   _index(0),
+  _tail(0),
   _capacity_in_bytes(0),
   _buf(NULL),
   _lock(NULL)
@@ -47,6 +48,11 @@ PtrQueue::~PtrQueue() {
   assert(_permanent || (_buf == NULL), "queue must be flushed before delete");
 }
 
+/**
+ * Tag : flush current ptrQueue to a global PtrQueue->PtrQueueSet.
+ * 
+ * 
+ */
 void PtrQueue::flush_impl() {
   if (_buf != NULL) {
     BufferNode* node = BufferNode::make_node_from_buffer(_buf, index());
@@ -250,6 +256,10 @@ bool PtrQueueSet::process_or_enqueue_complete_buffer(BufferNode* node) {
   return false;
 }
 
+/**
+ * Tag : Attach this BufferNode to current ptrQueueSet->tail 
+ *  This function is used to merge thread local ptrQueue to their global ptrQueueSet.
+ */
 void PtrQueueSet::enqueue_complete_buffer(BufferNode* cbn) {
   MutexLockerEx x(_cbl_mon, Mutex::_no_safepoint_check_flag);
   cbn->set_next(NULL);

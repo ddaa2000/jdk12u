@@ -55,6 +55,14 @@
 #include "memory/memRegion.hpp"
 #include "utilities/stack.hpp"
 
+// Haoran: Modify
+// #include "gc/g1/g1ConcurrentPrefetch.hpp"
+// #include "gc/g1/g1ConcurrentPrefetchThread.hpp"
+class G1ConcurrentPrefetch;
+class G1ConcurrentPrefetchThread;
+
+
+
 // A "G1CollectedHeap" is an implementation of a java heap for HotSpot.
 // It uses the "Garbage First" heap organization and algorithm, which
 // may combine concurrent marking with parallel, incremental compaction of
@@ -152,7 +160,11 @@ class G1CollectedHeap : public CollectedHeap {
   // Testing classes.
   friend class G1CheckCSetFastTableClosure;
 
+public:
+  size_t _remark_reclaimed_bytes;
+  struct epoch_struct* user_buf;
 private:
+  uint _have_done;
   G1YoungRemSetSamplingThread* _young_gen_sampling_thread;
 
   WorkGang* _workers;
@@ -751,14 +763,29 @@ private:
   void record_obj_copy_mem_stats();
 
   // The hot card cache for remembered set insertion optimization.
+  // Delay the processing of the cards in Hot Card Cache.
+  // Because these cards are modified frequently. 
+  //
   G1HotCardCache* _hot_card_cache;
 
   // The g1 remembered set of the heap.
+  // [?]a. Univeral RemSet handler ?
+  // Each region has a RemSet ？
+  //
   G1RemSet* _g1_rem_set;
 
   // A set of cards that cover the objects for which the Rsets should be updated
   // concurrently after the collection.
+  // b. 2 levels Dirty Card queue。
+  //    Thread Local dirty card queue, 64 entries ?
+  //    Gobal dirty card queue;
+  //
   DirtyCardQueueSet _dirty_card_queue_set;
+
+  // Haoran: modify
+  BufferNode::Allocator _prefetch_mark_queue_buffer_allocator;
+  G1PrefetchQueueSet  _prefetch_queue_set;
+
 
   // After a collection pause, convert the regions in the collection set into free
   // regions.
@@ -771,6 +798,10 @@ private:
   // The concurrent marker (and the thread it runs in.)
   G1ConcurrentMark* _cm;
   G1ConcurrentMarkThread* _cm_thread;
+  
+  // Haoran: modify
+  G1ConcurrentPrefetch* _pf;
+  G1ConcurrentPrefetchThread* _pf_thread;
 
   // The concurrent refiner.
   G1ConcurrentRefine* _cr;
@@ -919,6 +950,9 @@ public:
 
   // A set of cards where updates happened during the GC
   DirtyCardQueueSet& dirty_card_queue_set() { return _dirty_card_queue_set; }
+  
+  // Haoran: modify
+  G1PrefetchQueueSet& prefetch_queue_set() { return _prefetch_queue_set; }
 
   // Create a G1CollectedHeap with the specified policy.
   // Must call the initialize method afterwards.
@@ -1314,6 +1348,8 @@ public:
   inline bool is_obj_dead_full(const oop obj) const;
 
   G1ConcurrentMark* concurrent_mark() const { return _cm; }
+  // Haoran: modify
+  G1ConcurrentPrefetch* concurrent_prefetch() const { return _pf; }
 
   // Refinement
 
@@ -1356,6 +1392,11 @@ public:
 
   // Perform any cleanup actions necessary before allowing a verification.
   virtual void prepare_for_verify();
+
+  // function paramter enqueu
+  // G1CollectedHeap implementation
+  virtual void prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param );
+
 
   // Perform verification.
 

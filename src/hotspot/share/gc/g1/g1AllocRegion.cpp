@@ -115,6 +115,14 @@ size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, bool fill_up) {
   return waste;
 }
 
+/**
+ * Tag : Use fake oop fill up a region.
+ * 
+ * Assume the avaible space of this region is too small. Use fake oop fill up it.
+ * Reset current region to G1AllocRegion::_dummy_region.  // A full special region ??
+ * 
+ * 
+ */
 size_t G1AllocRegion::retire(bool fill_up) {
   assert_alloc_region(_alloc_region != NULL, "not initialized properly");
 
@@ -131,6 +139,12 @@ size_t G1AllocRegion::retire(bool fill_up) {
   return waste;
 }
 
+/**
+ * Tag : Available space of current region isn't enough, Allocate a empty new region.
+ * 
+ * [?] Get this region from the heap and mark it as eden ??
+ * 
+ */
 HeapWord* G1AllocRegion::new_alloc_region_and_allocate(size_t word_size,
                                                        bool force) {
   assert_alloc_region(_alloc_region == _dummy_region, "pre-condition");

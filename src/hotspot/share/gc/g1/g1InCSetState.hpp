@@ -77,9 +77,9 @@ struct InCSetState {
   bool is_in_cset() const              { return _value > NotInCSet; }
 
   bool is_humongous() const            { return _value == Humongous; }
-  bool is_young() const                { return _value == Young; }
-  bool is_old() const                  { return _value == Old; }
-  bool is_optional() const             { return _value == Optional; }
+  bool is_young() const                { return _value == Young; }        // Eden is in CSet,
+  bool is_old() const                  { return _value == Old; }          // partial in CSet,
+  bool is_optional() const             { return _value == Optional; }     // [?] meaning of this ? the old region in CSet ?
 
 #ifdef ASSERT
   bool is_default() const              { return _value == NotInCSet; }

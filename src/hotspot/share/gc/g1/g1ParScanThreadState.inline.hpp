@@ -32,6 +32,19 @@
 #include "oops/access.inline.hpp"
 #include "oops/oop.inline.hpp"
 
+
+/**
+ * Tag : This closure is only used to handle the dirty card ??
+ * 
+ * Reach here from Dirty Card traversing. 
+ * 
+ * [?] Dirty card : field(Young Space) --> oop(Old Space)
+ * 
+ * [x] field:p may have already been handled.
+ *     If there is a forwading pointer stored in target oop address,
+ *     just return it.  
+ * 
+ */
 template <class T> void G1ParScanThreadState::do_oop_evac(T* p) {
   // Reference should not be NULL here as such are never pushed to the task queue.
   oop obj = RawAccess<IS_NOT_NULL>::oop_load(p);
@@ -48,25 +61,33 @@ template <class T> void G1ParScanThreadState::do_oop_evac(T* p) {
          "Obj " PTR_FORMAT " should not refer to humongous region %u from " PTR_FORMAT,
          p2i(obj), _g1h->addr_to_region((HeapWord*)obj), p2i(p));
 
-  if (!in_cset_state.is_in_cset()) {
+  // If the target oop isn't in CSet, meaning that it's already copied by other thread ?
+  if (!in_cset_state.is_in_cset()) { 
     // In this case somebody else already did all the work.
     return;
   }
 
   markOop m = obj->mark_raw();
   if (m->is_marked()) {
+    // Already evacuated, get the forwarding pointer
     obj = (oop) m->decode_pointer();
   } else {
-    obj = copy_to_survivor_space(in_cset_state, obj, m);
+    // Do the object copy action.
+    obj = copy_to_survivor_space(in_cset_state, obj, m);  // Do the real action, copy obj to survivor/old regions.
   }
-  RawAccess<IS_NOT_NULL>::oop_store(p, obj);
+  RawAccess<IS_NOT_NULL>::oop_store(p, obj);     // p points to new oop.
 
   assert(obj != NULL, "Must be");
-  if (HeapRegion::is_in_same_region(p, obj)) {
+  if (HeapRegion::is_in_same_region(p, obj)) {  // cross-region reference 
     return;
   }
-  HeapRegion* from = _g1h->heap_region_containing(p);
-  if (!from->is_young()) {
+
+  // Push the dirty card into GC Thread DirtyCard queue
+  // a. target oop is NOT in CSet,
+  // b. p -> oop is a cross-region reference,
+  // c. p isn't in Young Space
+  HeapRegion* from = _g1h->heap_region_containing(p);  
+  if (!from->is_young()) {        // [x]Young -> Old reference ? Keep it in RemSet, not handle it in Young GC/Initial Mark ?
     enqueue_card_if_tracked(p, obj);
   }
 }
@@ -179,11 +200,18 @@ inline void G1ParScanThreadState::trim_queue_to_threshold(uint threshold) {
     }
   }
 
-  while (_refs->pop_local(ref, threshold)) {
+  while (_refs->pop_local(ref, threshold)) {  // threshold = 64
     dispatch_reference(ref);
   }
 }
 
+/**
+ * Tag : Process partial StarTask &(field) queues during Update Remset
+ * 
+ * Use the G1ParScanThreadState closure:
+ *   G1RefineCardClosure -> G1ScanClosureBase
+ *                               =>G1ParScanThreadState::trim_queue_partially()
+ */
 inline void G1ParScanThreadState::trim_queue_partially() {
   if (!needs_partial_trimming()) {
     return;
@@ -204,6 +232,13 @@ inline void G1ParScanThreadState::reset_trim_ticks() {
   _trim_ticks = Tickspan();
 }
 
+/**
+ * Tag : Push the found target obj into an option_region queue during STW Young Space.
+ * 
+ * [?] Find a reference into optional_regions, 
+ *     just push it into the _oops_into_optional_regions[] queue .
+ * 
+ */
 template <typename T>
 inline void G1ParScanThreadState::remember_root_into_optional_region(T* p) {
   oop o = RawAccess<IS_NOT_NULL>::oop_load(p);

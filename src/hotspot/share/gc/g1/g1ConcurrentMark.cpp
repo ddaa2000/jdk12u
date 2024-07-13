@@ -271,6 +271,10 @@ void G1CMRootRegions::reset() {
   _num_root_regions = 0;
 }
 
+/**
+ * Tag : Add a HeapRegion into CM Root Region set.
+ * 
+ */
 void G1CMRootRegions::add(HeapRegion* hr) {
   assert_at_safepoint();
   size_t idx = Atomic::add((size_t)1, &_num_root_regions) - 1;
@@ -524,6 +528,8 @@ void G1ConcurrentMark::clear_statistics_in_region(uint region_idx) {
   }
   _top_at_rebuild_starts[region_idx] = NULL;
   _region_mark_stats[region_idx].clear();
+  // Haoran: modify
+  _g1h->concurrent_prefetch()->clear_statistics_in_region(region_idx);
 }
 
 void G1ConcurrentMark::clear_statistics(HeapRegion* r) {
@@ -710,13 +716,13 @@ void G1ConcurrentMark::cleanup_for_next_mark() {
   // marking bitmap and getting it ready for the next cycle. During
   // this time no other cycle can start. So, let's make sure that this
   // is the case.
-  guarantee(!_g1h->collector_state()->mark_or_rebuild_in_progress(), "invariant");
+  // guarantee(!_g1h->collector_state()->mark_or_rebuild_in_progress(), "invariant");
 
   clear_bitmap(_next_mark_bitmap, _concurrent_workers, true);
 
   // Repeat the asserts from above.
   guarantee(cm_thread()->during_cycle(), "invariant");
-  guarantee(!_g1h->collector_state()->mark_or_rebuild_in_progress(), "invariant");
+  // guarantee(!_g1h->collector_state()->mark_or_rebuild_in_progress(), "invariant");
 }
 
 void G1ConcurrentMark::clear_prev_bitmap(WorkGang* workers) {
@@ -732,6 +738,11 @@ public:
   }
 };
 
+
+/**
+ * Tag : Why does it need to inform each region ?
+ * 
+ */
 void G1ConcurrentMark::pre_initial_mark() {
   // Initialize marking structures. This has to be done in a STW phase.
   reset();
@@ -756,6 +767,12 @@ void G1ConcurrentMark::post_initial_mark() {
   // threads to have SATB queues with active set to false.
   satb_mq_set.set_active_all_threads(true, /* new active value */
                                      false /* expected_active */);
+  
+  // Haoran: modify
+  PrefetchQueueSet& prefetch_mq_set = _g1h->prefetch_queue_set();
+  prefetch_mq_set.set_active_all_threads(true, /* new active value */
+                    false /* expected_active */);
+
 
   _root_regions.prepare_for_scan();
 
@@ -871,23 +888,38 @@ uint G1ConcurrentMark::calc_active_marking_workers() {
   return result;
 }
 
+/**
+ * Tag : CM - Root Region Scan phase
+ * 
+ * [?] The usage of 3 tops ?
+ * 
+ * Scan range [_next_top_at_mark_start, top] ?
+ * 
+ * 
+ */
 void G1ConcurrentMark::scan_root_region(HeapRegion* hr, uint worker_id) {
   assert(hr->is_old() || (hr->is_survivor() && hr->next_top_at_mark_start() == hr->bottom()),
          "Root regions must be old or survivor but region %u is %s", hr->hrm_index(), hr->get_type_str());
   G1RootRegionScanClosure cl(_g1h, this, worker_id);
 
   const uintx interval = PrefetchScanIntervalInBytes;
-  HeapWord* curr = hr->next_top_at_mark_start();
-  const HeapWord* end = hr->top();
+  HeapWord* curr = hr->next_top_at_mark_start();  // ??
+  const HeapWord* end = hr->top();                // current top
   while (curr < end) {
     Prefetch::read(curr, interval);
     oop obj = oop(curr);
-    int size = obj->oop_iterate_size(&cl);
+    int size = obj->oop_iterate_size(&cl);    // [?] Iterate the fields of this object ?
     assert(size == obj->size(), "sanity");
     curr += size;
   }
 }
 
+/**
+ * Tag : Concurrent Marking - Root Region Scan phase
+ * 
+ * One GC thread per HeapRegion.
+ * 
+ */
 class G1CMRootRegionScanTask : public AbstractGangTask {
   G1ConcurrentMark* _cm;
 public:
@@ -972,6 +1004,11 @@ void G1ConcurrentMark::mark_from_roots() {
   // Parallel task terminator is set in "set_concurrency_and_phase()"
   set_concurrency_and_phase(active_workers, true /* concurrent */);
 
+  {
+    MutexLockerEx pl(CPF_lock, Mutex::_no_safepoint_check_flag);
+    // Haoran: modify
+    CPF_lock->notify();
+  }
   G1CMConcurrentMarkingTask marking_task(this);
   _concurrent_workers->run_task(&marking_task);
   print_stats();
@@ -1155,10 +1192,21 @@ void G1ConcurrentMark::remark() {
     // threads to have SATB queues with active set to true.
     satb_mq_set.set_active_all_threads(false, /* new active value */
                                        true /* expected_active */);
+    
+    // Haoran: modify
+    PrefetchQueueSet& prefetch_mq_set = _g1h->prefetch_queue_set();
+    // We're done with marking.
+    // This is the end of the marking cycle, we're expected all
+    // threads to have SATB queues with active set to true.
+    prefetch_mq_set.set_active_all_threads(false, /* new active value */
+                    true /* expected_active */);
+
 
     {
       GCTraceTime(Debug, gc, phases) debug("Flush Task Caches", _gc_timer_cm);
       flush_all_task_caches();
+      // Haoran: modify
+          _g1h->concurrent_prefetch()->flush_all_task_caches();
     }
 
     // Install newly created mark bitmap as "prev".
@@ -1179,7 +1227,13 @@ void G1ConcurrentMark::remark() {
     }
     {
       GCTraceTime(Debug, gc, phases) debug("Reclaim Empty Regions", _gc_timer_cm);
+      size_t heap_used_bytes_before_gc = _g1h->used();
+      // tty->print("Before reclaim empty regions: 0x%lu MB\n", heap_used_bytes_before_gc/1024/1024);
       reclaim_empty_regions();
+      size_t heap_used_bytes_after_gc = _g1h->used();
+      // tty->print("After reclaim empty regions: 0x%lu MB\n", heap_used_bytes_after_gc/1024/1024);
+      if(heap_used_bytes_before_gc > heap_used_bytes_after_gc)
+        _g1h->_remark_reclaimed_bytes += heap_used_bytes_before_gc - heap_used_bytes_after_gc;
     }
 
     // Clean out dead classes
@@ -2014,6 +2068,9 @@ void G1ConcurrentMark::concurrent_cycle_abort() {
     return;
   }
 
+  // Haoran: modify
+  // ShouldNotReachHere();
+
   // Clear all marks in the next bitmap for the next marking cycle. This will allow us to skip the next
   // concurrent bitmap clearing.
   {
@@ -2038,6 +2095,15 @@ void G1ConcurrentMark::concurrent_cycle_abort() {
   // This can be called either during or outside marking, we'll read
   // the expected_active value from the SATB queue set.
   satb_mq_set.set_active_all_threads(
+                                 false, /* new active value */
+                                 satb_mq_set.is_active() /* expected_active */);
+
+  // Haoran: modify
+  G1PrefetchQueueSet& pq_set = G1CollectedHeap::heap()->prefetch_queue_set();
+  pq_set.abandon_partial_marking();
+  // This can be called either during or outside marking, we'll read
+  // the expected_active value from the SATB queue set.
+  pq_set.set_active_all_threads(
                                  false, /* new active value */
                                  satb_mq_set.is_active() /* expected_active */);
 }
@@ -2101,6 +2167,14 @@ G1CMOopClosure::G1CMOopClosure(G1CollectedHeap* g1h,
   : MetadataVisitingOopIterateClosure(get_cm_oop_closure_ref_processor(g1h)),
     _g1h(g1h), _task(task)
 { }
+
+// Haoran: modify
+G1PFOopClosure::G1PFOopClosure(G1CollectedHeap* g1h,
+                               G1PFTask* task)
+  : MetadataVisitingOopIterateClosure(get_cm_oop_closure_ref_processor(g1h)),
+    _g1h(g1h), _task(task)
+{ }
+
 
 void G1CMTask::setup_for_region(HeapRegion* hr) {
   assert(hr != NULL,
@@ -2338,14 +2412,28 @@ void G1CMTask::drain_local_queue(bool partially) {
 
   if (_task_queue->size() > target_size) {
     G1TaskQueueEntry entry;
-    bool ret = _task_queue->pop_local(entry);
+    // bool ret = _task_queue->pop_local(entry);
+    bool ret = _task_queue->pop_global(entry);
     while (ret) {
-      scan_task_entry(entry);
+      oop obj = entry.obj();
+      oop mask_obj = (oop)((size_t)obj & ((1ULL<<63)-1));
+      size_t page_id = ((size_t)mask_obj - SEMERU_START_ADDR)/4096;
+      if(((size_t)obj & (1ULL<<63)) || _g1h->user_buf->page_stats[page_id] == 0) {
+        G1TaskQueueEntry clean_entry = G1TaskQueueEntry::from_oop(mask_obj);
+        scan_task_entry(clean_entry);
+      }
+      else {
+        mask_obj = (oop)((size_t)obj | (1ULL<<63));
+        G1TaskQueueEntry new_entry = G1TaskQueueEntry::from_oop(mask_obj);
+        _task_queue->push(new_entry);
+      }
       if (_task_queue->size() <= target_size || has_aborted()) {
         ret = false;
       } else {
-        ret = _task_queue->pop_local(entry);
+        // ret = _task_queue->pop_local(entry);
+        ret = _task_queue->pop_global(entry);
       }
+      
     }
   }
 }
