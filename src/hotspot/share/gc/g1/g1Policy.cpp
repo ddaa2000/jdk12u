@@ -47,6 +47,9 @@
 #include "utilities/growableArray.hpp"
 #include "utilities/pair.hpp"
 
+//shengkai need syscall for user/sys time
+#include "runtime/os.hpp"
+
 G1Policy::G1Policy(G1CollectorPolicy* policy, STWGCTimer* gc_timer) :
   _predictor(G1ConfidencePercent / 100.0),
   _analytics(new G1Analytics(&_predictor)),
@@ -80,6 +83,12 @@ G1Policy::G1Policy(G1CollectorPolicy* policy, STWGCTimer* gc_timer) :
   _max_survivor_regions(0),
   _survivors_age_table(true)
 {
+  //shengkai: may not so accurate in first epoch
+  update_before_stage();
+  _prev_mut_rate = 0;
+  _prev_eden = 0;
+  _is_backed = false;
+  log_info(gc, ergo)("[DEBUG] init pre time with policy initialization! User=%lfs, Sys=%lfs, Real=%lfs",_pre_user_time,_pre_sys_time,_pre_real_time);
 }
 
 G1Policy::~G1Policy() {
@@ -226,11 +235,116 @@ uint G1Policy::update_young_list_max_and_target_length(size_t rs_lengths) {
 }
 
 uint G1Policy::update_young_list_target_length(size_t rs_lengths) {
-  YoungTargetLengths young_lengths = young_list_target_lengths(rs_lengths);
+  YoungTargetLengths young_lengths;
+  if(G1UseHighThruTuning){
+    young_lengths = young_list_target_lengths_high_thru(rs_lengths);
+  } else {
+    young_lengths = young_list_target_lengths(rs_lengths);
+  }
   _young_list_target_length = young_lengths.first;
 
   return young_lengths.second;
 }
+
+uint G1Policy::calculate_desired_high_thru_young_length(){
+  uint desired_eden_length = 0;
+  size_t cur_eden = _g1h->eden_regions_count() * G1HeapRegionSize;
+  size_t desired_eden_count = cur_eden;
+  {
+    // shengkai: eden space step and prev adaptive information
+    double gc_rate = _gc_user_time / _mut_user_time;
+    double sys_rate = 0.0;
+    if (gc_rate < 1) {
+      sys_rate = (_mut_sys_time + _gc_sys_time) / (_mut_user_time + _gc_user_time);
+    } else {
+      //ignore app interference when young gen is small enough
+      sys_rate = _gc_sys_time / _gc_user_time;
+    }
+
+    double mut_rate = _mut_user_time / (_mut_user_time + _mut_sys_time + _gc_user_time + _gc_sys_time);
+    if ((mut_rate < _prev_mut_rate) && (_is_backed ==
+                                        false)) {//detect interferences of app pattern changes(should be short) , keep size until stable
+      _is_backed = true;
+      desired_eden_count = _prev_eden;
+      log_info(gc, ergo)("[DEBUG] back eden for %lf<0.9*%lf, new eden = %ld", mut_rate, _prev_mut_rate,
+                          desired_eden_count);
+    } else if (sys_rate > gc_rate/* super param */) {
+      // majflat block more, assume no more than 10 times block
+      _is_backed = false;
+      double decre = 0.05 * (_mut_sys_time + _gc_sys_time) / _mut_user_time;
+      if (decre > 0.5 /* super param, max decre 40% at once*/)
+        decre = 0.5;
+      desired_eden_count = (size_t)((double) desired_eden_count * (1 - decre));
+      log_info(gc, ergo)("[DEBUG] decre eden for %lf, new eden = %ld", decre, desired_eden_count);
+    } else {
+      // gc cost more
+      _is_backed = false;
+      double incre = 0.1 * gc_rate;
+      if (incre > 1/* super param, max triple eden size at once*/)
+        incre = 1;
+      desired_eden_count += (size_t)((double) 1024 * 1024 * 1024 * incre);
+      log_info(gc, ergo)("[DEBUG] incre eden for %lfg, new eden = %ld", incre, desired_eden_count);
+    }
+
+    if (_is_backed == false) {
+      _prev_eden = cur_eden;
+      _prev_mut_rate = mut_rate;
+    }
+  }
+  desired_eden_length = desired_eden_count / G1HeapRegionSize;
+  return desired_eden_length + _g1h->survivor_regions_count();
+}
+
+G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths_high_thru(size_t rs_lengths) {
+  YoungTargetLengths result;
+
+  // Calculate the absolute and desired min bounds first.
+
+  // This is how many young regions we already have (currently: the survivors).
+  const uint base_min_length = _g1h->survivor_regions_count();
+  uint desired_min_length = _young_gen_sizer->min_desired_young_length();
+  // This is the absolute minimum young length. Ensure that we
+  // will at least have one eden region available for allocation.
+  uint absolute_min_length = base_min_length + MAX2(_g1h->eden_regions_count(), (uint)1);
+  // If we shrank the young list target it should not shrink below the current size.
+  desired_min_length = MAX2(desired_min_length, absolute_min_length);
+  // Calculate the absolute and desired max bounds.
+
+  uint desired_max_length = calculate_young_list_desired_max_length();
+
+  uint young_list_target_length = 0;
+
+  young_list_target_length = calculate_desired_high_thru_young_length();
+
+  result.second = young_list_target_length;
+
+  // We will try our best not to "eat" into the reserve.
+  uint absolute_max_length = 0;
+  if (_free_regions_at_end_of_collection > _reserve_regions) {
+    absolute_max_length = _free_regions_at_end_of_collection - _reserve_regions;
+  }
+  if (desired_max_length > absolute_max_length) {
+    desired_max_length = absolute_max_length;
+  }
+
+  // Make sure we don't go over the desired max length, nor under the
+  // desired min length. In case they clash, desired_min_length wins
+  // which is why that test is second.
+  if (young_list_target_length > desired_max_length) {
+    young_list_target_length = desired_max_length;
+  }
+  if (young_list_target_length < desired_min_length) {
+    young_list_target_length = desired_min_length;
+  }
+
+  assert(young_list_target_length > base_min_length,
+         "we should be able to allocate at least one eden region");
+  assert(young_list_target_length >= absolute_min_length, "post-condition");
+
+  result.first = young_list_target_length;
+  return result;
+}
+
 
 G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths(size_t rs_lengths) const {
   YoungTargetLengths result;
@@ -452,6 +566,13 @@ void G1Policy::record_full_collection_end() {
 
   collector_state()->set_in_full_gc(false);
 
+  if(G1UseHighThruTuning) {
+    //shengkai: ignore major gc by update time record
+    update_before_stage();
+    log_info(gc, ergo)("[DEBUG] ignoring full gc! User=%lfs, Sys=%lfs, Real=%lfs", \
+                    _pre_user_time, _pre_sys_time, _pre_real_time);
+  }
+
   // "Nuke" the heuristics that control the young/mixed GC
   // transitions and make sure we start with young GCs after the Full GC.
   collector_state()->set_in_young_only_phase(true);
@@ -476,6 +597,15 @@ void G1Policy::record_full_collection_end() {
 }
 
 void G1Policy::record_collection_pause_start(double start_time_sec) {
+
+  if(G1UseHighThruTuning) {
+    //shengkai: caculate mutator here
+    calculate_mutator();
+    log_info(gc, ergo)("[DEBUG] mutator time! User=%lfs, Sys=%lfs, Real=%lfs", _mut_user_time, _mut_sys_time,
+                       _mut_real_time);
+    update_before_stage();
+  }
+  
   // We only need to do this here as the policy will only be applied
   // to the GC we're about to start. so, no point is calculating this
   // every time we calculate / recalculate the target young length.
@@ -581,6 +711,20 @@ bool G1Policy::need_to_start_conc_mark(const char* source, size_t alloc_word_siz
 
 void G1Policy::record_collection_pause_end(double pause_time_ms, size_t cards_scanned, size_t heap_used_bytes_before_gc) {
   double end_time_sec = os::elapsedTime();
+
+  if(G1UseHighThruTuning) {
+    //shengkai: calculate gc time here
+    calculate_minor_gc();
+    log_info(gc, ergo)("[DEBUG] minor gc time! User=%lfs, Sys=%lfs, Real=%lfs", \
+                      _gc_user_time, _gc_sys_time, _gc_real_time);
+
+
+    //shengkai: record mutator begin
+    update_before_stage();
+    log_info(gc, ergo)("[DEBUG] finish minor gc! User=%lfs, Sys=%lfs, Real=%lfs", \
+                      _pre_user_time, _pre_sys_time, _pre_real_time);
+    }
+
 
   size_t cur_used_bytes = _g1h->used();
   assert(cur_used_bytes == _g1h->recalculate_used(), "It should!");
@@ -1222,4 +1366,45 @@ void G1Policy::transfer_survivors_to_cset(const G1SurvivorRegions* survivors) {
   // at the start of the next.
 
   finished_recalculating_age_indexes(false /* is_survivors */);
+}
+
+
+// shengkai: update time record
+// update beginning
+void G1Policy::update_before_stage(){
+  bool valid = os::getTimesSecs(&_pre_real_time,
+                                  &_pre_user_time,
+                                  &_pre_sys_time);
+  if (!valid) {
+    log_info(gc, ergo)("calculate gc fail: os::getTimesSecs() returned invalid result");
+  }
+}
+//shengkai: calculate mutator time this epoch
+void G1Policy::calculate_mutator(){
+  double real_time, user_time, sys_time;
+  bool valid = os::getTimesSecs(&real_time, &user_time, &sys_time);
+  if(valid){
+    user_time -= _pre_user_time;
+    sys_time -= _pre_sys_time;
+    real_time -= _pre_real_time;
+    _mut_real_time = real_time;
+    _mut_sys_time = sys_time;
+    _mut_user_time = user_time;
+  }else
+    log_info(gc, ergo)("calculate gc fail: os::getTimesSecs() returned invalid result");
+}
+
+//shengkai: calculate gc time this epoch
+void G1Policy::calculate_minor_gc(){
+  double real_time, user_time, sys_time;
+  bool valid = os::getTimesSecs(&real_time, &user_time, &sys_time);
+  if(valid){
+    user_time -= _pre_user_time;
+    sys_time -= _pre_sys_time;
+    real_time -= _pre_real_time;
+    _gc_real_time = real_time;
+    _gc_sys_time = sys_time;
+    _gc_user_time = user_time;
+  }else
+    log_info(gc, ergo)("calculate gc fail: os::getTimesSecs() returned invalid result");
 }

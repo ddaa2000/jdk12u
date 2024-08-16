@@ -60,6 +60,8 @@
   product(uintx, G1ConfidencePercent, 50,                                   \
           "Confidence level for MMU/pause predictions")                     \
           range(0, 100)                                                     \
+  product(bool, G1UseHighThruTuning, false,                                 \
+          "Use the high-throughput autotuning strategy for far memory")     \
                                                                             \
   diagnostic(intx, G1SummarizeRSetStatsPeriod, 0,                           \
           "The period (in number of GCs) at which we will generate "        \
