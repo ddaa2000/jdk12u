@@ -119,7 +119,9 @@ void G1Policy::init(G1CollectedHeap* g1h, G1CollectionSet* collection_set) {
 
   _free_regions_at_end_of_collection = _g1h->num_free_regions();
 
-  update_young_list_max_and_target_length();
+  //shengkai fix init bug
+  init_young_list_max_and_target_length(_analytics->predict_rs_lengths());
+  //update_young_list_max_and_target_length();
   // We may immediately start allocating regions and placing them on the
   // collection set list. Initialize the per-collection set info
   _collection_set->start_incremental_building();
@@ -245,69 +247,130 @@ uint G1Policy::update_young_list_target_length(size_t rs_lengths) {
 
   return young_lengths.second;
 }
+//shengkai fix init bug
+uint G1Policy::init_young_list_max_and_target_length(size_t rs_lengths) {
+  log_info(gc, ergo)("[DEBUG] do init");
+  YoungTargetLengths young_lengths = young_list_target_lengths(rs_lengths);
+  _young_list_target_length = young_lengths.first;
+  update_max_gc_locker_expansion();
+  return young_lengths.second;
+}
 
+
+//16 MB rounding off 
+#define MB 1024*1024
+size_t eden_rounding(size_t eden_size){
+  uint result = (uint)(eden_size + 8 * MB) / G1HeapRegionSize;
+  return result;
+}
+
+double eden_decre_factor(double sys, double user){
+  return 0.4 - user/(5*sys);
+}
+
+#define SMALL_EDEN_STEP 128*MB
 uint G1Policy::calculate_desired_high_thru_young_length(){
   uint desired_eden_length = 0;
-  size_t cur_eden = _g1h->eden_regions_count() * G1HeapRegionSize;
-  size_t desired_eden_count = cur_eden;
+  size_t desired_eden_count = _cur_eden;
+  //shengkai profile adaptive changes
+  log_info(gc, ergo)("[DEBUG] high thrughput cur eden %ld, prev eden = %ld", desired_eden_count, _prev_eden);
   {
     // shengkai: eden space step and prev adaptive information
     double gc_rate = _gc_user_time / _mut_user_time;
-    double sys_rate = 0.0;
-    if (gc_rate < 1) {
-      sys_rate = (_mut_sys_time + _gc_sys_time) / (_mut_user_time + _gc_user_time);
-    } else {
-      //ignore app interference when young gen is small enough
-      sys_rate = _gc_sys_time / _gc_user_time;
-    }
+    double sys_rate = (_mut_sys_time + _gc_sys_time) / (_mut_user_time + _gc_user_time);
+    double mut_sys_time_base = _mut_sys_time > 0.1 ? 2*_mut_sys_time:0;
+    double gc_sys_time_base = _gc_sys_time > 0.1 ? 2*_gc_sys_time:0;
 
-    double mut_rate = _mut_user_time / (_mut_user_time + _mut_sys_time + _gc_user_time + _gc_sys_time);
-    if ((mut_rate < _prev_mut_rate) && (_is_backed ==
-                                        false)) {//detect interferences of app pattern changes(should be short) , keep size until stable
-      _is_backed = true;
-      desired_eden_count = _prev_eden;
-      log_info(gc, ergo)("[DEBUG] back eden for %lf<0.9*%lf, new eden = %ld", mut_rate, _prev_mut_rate,
-                          desired_eden_count);
-    } else if (sys_rate > gc_rate/* super param */) {
-      // majflat block more, assume no more than 10 times block
-      _is_backed = false;
-      double decre = 0.05 * (_mut_sys_time + _gc_sys_time) / _mut_user_time;
-      if (decre > 0.5 /* super param, max decre 40% at once*/)
-        decre = 0.5;
-      desired_eden_count = (size_t)((double) desired_eden_count * (1 - decre));
+
+    //double mut_rate = _mut_user_time / (_mut_user_time + _mut_sys_time + _gc_user_time + _gc_sys_time);
+
+    if(2 * _gc_real_time >= _mut_real_time && _gc_real_time < 0.03){
+      //small eden with fast alloc, incre eden
+      desired_eden_count += SMALL_EDEN_STEP;
+      log_info(gc, ergo)("[DEBUG] incre eden for one step(fast alloc or small eden), new eden = %ld", desired_eden_count);
+    }else if(mut_sys_time_base > _mut_user_time || gc_sys_time_base > _gc_user_time){
+      //decre eden for large WSS
+      double mut_decre = mut_sys_time_base > _mut_user_time ? eden_decre_factor(_mut_sys_time,_mut_user_time) : 0;
+      double gc_decre = gc_sys_time_base > _gc_user_time ? eden_decre_factor(_gc_sys_time,_gc_user_time) : 0;
+      double decre = (mut_decre - gc_decre) / 4 + gc_decre;
+      desired_eden_count = (size_t)((double)desired_eden_count * (1 - decre));
       log_info(gc, ergo)("[DEBUG] decre eden for %lf, new eden = %ld", decre, desired_eden_count);
-    } else {
-      // gc cost more
-      _is_backed = false;
-      double incre = 0.1 * gc_rate;
-      if (incre > 1/* super param, max triple eden size at once*/)
-        incre = 1;
-      desired_eden_count += (size_t)((double) 1024 * 1024 * 1024 * incre);
-      log_info(gc, ergo)("[DEBUG] incre eden for %lfg, new eden = %ld", incre, desired_eden_count);
-    }
-
-    if (_is_backed == false) {
-      _prev_eden = cur_eden;
-      _prev_mut_rate = mut_rate;
+    }else if(5*_mut_sys_time < _mut_user_time || 5*_gc_sys_time > _gc_user_time){
+      //slow incre eden
+      desired_eden_count += 16*MB;
+      log_info(gc, ergo)("[DEBUG] slow incre when sys time small");
+    }else{
+      log_info(gc, ergo)("[DEBUG] do nothing!");
     }
   }
-  desired_eden_length = desired_eden_count / G1HeapRegionSize;
+  //check update _cur_eden
+  desired_eden_length = eden_rounding(desired_eden_count);
   return desired_eden_length + _g1h->survivor_regions_count();
 }
 
+// uint G1Policy::calculate_desired_high_thru_young_length(){
+//   uint desired_eden_length = 0;
+//   size_t desired_eden_count = _cur_eden;
+//   //shengkai profile adaptive changes
+//   log_info(gc, ergo)("[DEBUG] high thrughput cur eden %ld, prev eden = %ld", desired_eden_count, _prev_eden);
+//   {
+//     // shengkai: eden space step and prev adaptive information
+//     double gc_rate = _gc_user_time / _mut_user_time;
+//     double sys_rate = (_mut_sys_time + _gc_sys_time) / (_mut_user_time + _gc_user_time);
+// 
+//     double mut_rate = _mut_user_time / (_mut_user_time + _mut_sys_time + _gc_user_time + _gc_sys_time);
+//     // if ((mut_rate < 0.8 * _prev_mut_rate) && (_is_backed ==
+//     //                                     false)) {//detect interferences of app pattern changes(should be short) , keep size until stable
+//     //   _is_backed = true;
+//     //   desired_eden_count = _prev_eden;
+//     //   log_info(gc, ergo)("[DEBUG] back eden for %lf<0.8*%lf, new eden = %ld", mut_rate, _prev_mut_rate,
+//     //                       desired_eden_count);
+//     // } else
+//     if (sys_rate > gc_rate && 3 * _gc_sys_time > _mut_sys_time/* super param to decide decre or incre eden */) {
+//       // majflat block more, assume no more than 10 times block
+//       _is_backed = false;
+//       //when mutator pattern access full heap or eden is small enough
+//       double decre = 0.2 * _gc_sys_time /_mut_sys_time;//aggresively decre eden size , min(_gc_sys_time /_mut_sys_time, sys/mut_user) gc base sys time interference
+//       if (decre > 0.5 /* super param, max decre 40% at once*/)
+//         decre = 0.5;
+//       desired_eden_count = (size_t)((double) desired_eden_count * (1 - decre)) + 8*1024*1024;//16MB rounding off
+//       log_info(gc, ergo)("[DEBUG] decre eden for %lf, new eden = %ld", decre, desired_eden_count);
+//     } else {
+//       // gc cost more
+//       _is_backed = false;
+//       double incre = 0.1 * gc_rate;//slowly incre eden
+//       if (incre > 1/* super param, max triple eden size at once*/)
+//         incre = 1;
+//       desired_eden_count += ((size_t)((double) 1024 * 1024 * 1024 * incre) + 8*1024*1024);//16MB rounding off
+//       log_info(gc, ergo)("[DEBUG] incre eden for %lfg, new eden = %ld, new eden region %ld", incre, desired_eden_count, desired_eden_count / G1HeapRegionSize);
+//     }
+// 
+//     if (_is_backed == false) {
+//       _prev_eden = _cur_eden;
+//       _prev_mut_rate = mut_rate;
+//     }
+//   }
+//   desired_eden_length = desired_eden_count / G1HeapRegionSize;
+//   return desired_eden_length + _g1h->survivor_regions_count();
+// }
+
 G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths_high_thru(size_t rs_lengths) {
   YoungTargetLengths result;
+  log_info(gc, ergo)("[DEBUG] high throughput cur eden %ld, survivor = %u, young = %u", _cur_eden, _g1h->survivor_regions_count(), _g1h->young_regions_count());
 
   // Calculate the absolute and desired min bounds first.
 
   // This is how many young regions we already have (currently: the survivors).
   const uint base_min_length = _g1h->survivor_regions_count();
-  uint desired_min_length = _young_gen_sizer->min_desired_young_length();
+  //shengkai min_desired_young_length() = newSize/regionSize when init
+  // uint desired_min_length = _young_gen_sizer->min_desired_young_length();
   // This is the absolute minimum young length. Ensure that we
   // will at least have one eden region available for allocation.
   uint absolute_min_length = base_min_length + MAX2(_g1h->eden_regions_count(), (uint)1);
   // If we shrank the young list target it should not shrink below the current size.
-  desired_min_length = MAX2(desired_min_length, absolute_min_length);
+  // desired_min_length = MAX2(desired_min_length, absolute_min_length);
+  // at least eden has 160m
+  uint desired_min_length = absolute_min_length + 9;
   // Calculate the absolute and desired max bounds.
 
   uint desired_max_length = calculate_young_list_desired_max_length();
@@ -342,14 +405,18 @@ G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths_high_thru(size_
   assert(young_list_target_length >= absolute_min_length, "post-condition");
 
   result.first = young_list_target_length;
+  //shengkai provide a stable eden size during one gc epoch
+  _cur_eden = (result.first - base_min_length) * G1HeapRegionSize;
+  log_info(gc, ergo)("[DEBUG] high throughput result first %u, second %u, base min %u", result.first, result.second, base_min_length);
   return result;
 }
 
-
-G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths(size_t rs_lengths) const {
+//shengkai clear func const tag
+G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths(size_t rs_lengths) {
   YoungTargetLengths result;
 
   // Calculate the absolute and desired min bounds first.
+  log_info(gc, ergo)("[DEBUG] baseline cur eden %ld, survivor = %u, young = %u", _cur_eden, _g1h->survivor_regions_count(), _g1h->young_regions_count());
 
   // This is how many young regions we already have (currently: the survivors).
   const uint base_min_length = _g1h->survivor_regions_count();
@@ -408,6 +475,8 @@ G1Policy::YoungTargetLengths G1Policy::young_list_target_lengths(size_t rs_lengt
   assert(young_list_target_length >= absolute_min_length, "post-condition");
 
   result.first = young_list_target_length;
+  _cur_eden = (result.first - base_min_length) * G1HeapRegionSize;
+  log_info(gc, ergo)("[DEBUG] baseline result first %u, second %u ,base min %u", result.first, result.second, base_min_length);
   return result;
 }
 
@@ -533,7 +602,8 @@ void G1Policy::revise_young_list_target_length_if_necessary(size_t rs_lengths) {
     size_t rs_lengths_prediction = rs_lengths * 1100 / 1000;
     update_rs_lengths_prediction(rs_lengths_prediction);
 
-    update_young_list_max_and_target_length(rs_lengths_prediction);
+    //shengkai forbid update eden here
+    //update_young_list_max_and_target_length(rs_lengths_prediction);
   }
 }
 

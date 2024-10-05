@@ -195,6 +195,8 @@ private:
   // unbounded young list target length.
   uint update_young_list_max_and_target_length();
   uint update_young_list_max_and_target_length(size_t rs_lengths);
+  //shengkai fix init bug
+  uint init_young_list_max_and_target_length(size_t rs_lengths);
 
   // Update the young list target length either by setting it to the
   // desired fixed value or by calculating it using G1's pause
@@ -228,7 +230,8 @@ private:
   // Result of the bounded_young_list_target_length() method, containing both the
   // bounded as well as the unbounded young list target lengths in this order.
   typedef Pair<uint, uint, StackObj> YoungTargetLengths;
-  YoungTargetLengths young_list_target_lengths(size_t rs_lengths) const;
+  //shengkai clear const tag
+  YoungTargetLengths young_list_target_lengths(size_t rs_lengths);
 
   void update_rs_lengths_prediction();
   void update_rs_lengths_prediction(size_t prediction);
@@ -461,6 +464,9 @@ public:
   size_t _prev_eden;      // step back
   double _prev_mut_rate;  // step back flag
   bool   _is_backed;	  // flag of recover eden
+
+  //g1 changes eden counter during gc
+  size_t _cur_eden;
 
   // shengkai: update time record
   // update beginning
