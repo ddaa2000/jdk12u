@@ -1845,6 +1845,12 @@ static bool is_daemon(oop threadObj) {
 void JavaThread::exit(bool destroy_vm, ExitType exit_type) {
   assert(this == JavaThread::current(), "thread consistency check");
 
+  //shengkai log when thread exit
+  long majflt, minflt, user_time, sys_time;
+  os::current_thread_majflt_minflt_and_cputime(&majflt, &minflt, &user_time, &sys_time);
+  log_info(gc, thread)("Exit JavaThread %s(tid=%d), Majflt=%ld, Minflt=%ld, user=%ldms, sys=%ldms",
+    this->name(), Thread::current()->osthread()->thread_id(), majflt, minflt, user_time, sys_time);
+
   elapsedTimer _timer_exit_phase1;
   elapsedTimer _timer_exit_phase2;
   elapsedTimer _timer_exit_phase3;

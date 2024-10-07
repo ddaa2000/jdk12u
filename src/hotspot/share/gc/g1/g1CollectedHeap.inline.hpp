@@ -33,6 +33,9 @@
 #include "gc/shared/taskqueue.inline.hpp"
 #include "runtime/orderAccess.hpp"
 
+//shengkai add include
+#include "gc/shared/gcStats.hpp"
+
 G1EvacStats* G1CollectedHeap::alloc_buffer_stats(InCSetState dest) {
   switch (dest.value()) {
     case InCSetState::Young:
