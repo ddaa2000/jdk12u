@@ -21,7 +21,6 @@
  * questions.
  *
  */
-
 #include "precompiled.hpp"
 #include "gc/shared/prefetchQueue.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -34,7 +33,6 @@
 #include "runtime/thread.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
-
 PrefetchQueue::PrefetchQueue(PrefetchQueueSet* qset, bool permanent) :
   // SATB queues are only active during marking cycles. We create
   // them with their active field set to false. If a thread is
@@ -42,7 +40,9 @@ PrefetchQueue::PrefetchQueue(PrefetchQueueSet* qset, bool permanent) :
   // before the thread starts running, we'll need to set its active
   // field to true. This must be done in the collector-specific
   // BarrierSet::on_thread_attach() implementation.
-  PtrQueue(qset, permanent, false /* active */),
+  //PtrQueue(qset, permanent, false /* active is set to false */),
+  
+  PtrQueue(qset, permanent, false /* active is set to true*/),
   _m(Mutex::leaf, FormatBuffer<128>("PrefetchQueue"), true, Monitor::_safepoint_check_never),
   _in_processing(false)
 { }
@@ -88,9 +88,108 @@ void PrefetchQueue::apply_closure_and_empty(PrefetchBufferClosure* cl) {
     reset();
   }
 }
+void PrefetchQueue::handle_zero_index() {
+  // MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
+  // assert(index() == 0, "precondition");
+  // This thread records the full buffer and allocates a new one (while
+  // holding the lock if there is one).
+  if (_buf != NULL) {
+    // // avoid reading by TP threads
+    // // Make is_empty() return true.
+    // set_index_atomic(capacity());
+    // Atomic::store(capacity(), &_tail);
+    // return;
+    // size_t current_index = index();
+    // set_index_atomic(capacity());
+    // // Two-fingered compaction toward the end.
+    // size_t remaining_objs = MIN2(prefetch_queue_threshold(), _tail-current_index);
+    // if(remaining_objs > 0) {
+    // 	void** src = &_buf[0];
+    // 	void** dst = &_buf[0 + remaining_objs - 1];
+    // 	void** end = &_buf[capacity() - 1];
+    // 	// assert(src <= dst, "invariant");
+    // 	for ( ; src <= dst; dst --, end --) {
+    // 		//*end = *dst;
+    // 		Atomic::store(*dst, end);
+    // 	}
+    // }
+    // // dst points to the lowest retained entry, or the end of the buffer
+    // // if all the entries were filtered out.
+    // set_index_atomic(capacity() - remaining_objs);
+    // _tail = capacity();
+    // Simpler version.
+    // Discard all the contents
+		// set_index_atomic(capacity());
+    // set_tail_atomic(capacity());  // capacity() returns element index
+    size_t current_index = index_atomic();
+		size_t current_tail = tail_atomic(); 
+    set_index_atomic(capacity());
+    set_tail_atomic(capacity());  // capacity() returns element index
+    //
+    // Old version
+    // avoid reading by TP threads
+    // Make is_empty() return true.
+    // set_index_atomic(capacity());
+    // Two-fingered compaction toward the end.
+    if(current_tail < current_index) current_tail = current_index;
+    size_t remaining_objs = MIN2(prefetch_queue_threshold(), current_tail-current_index);
+    if(remaining_objs > 0) {
+      void** src = &_buf[0];
+      void** dst = &_buf[0 + remaining_objs - 1];
+      void** end = &_buf[capacity() - 1];
+      // assert(src <= dst, "invariant");
+      for ( ; src <= dst; dst --, end --) {
+        //*end = *dst;
+        Atomic::store(*dst, end);
+      }
+    }
+    // dst points to the lowest retained entry, or the end of the buffer
+    // if all the entries were filtered out.
+    set_index_atomic(capacity() - remaining_objs);
+    set_tail_atomic(capacity());
+  }
+  else {
+    // Set capacity in case this is the first allocation.
+    set_capacity(qset()->buffer_size());
+    // Allocate a new buffer.
+    // _buf = NEW_C_HEAP_ARRAY(void*, qset()->buffer_size(), mtGC)
+    _buf = qset()->allocate_buffer();
+    reset();
+  }
+}
+bool PrefetchQueue::dequeue(void** ptrptr){
 
 
-
+		// // *ptrptr = NULL;
+		// // return false;
+		// // MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
+		// size_t current_index = index();
+		// size_t current_tail = _tail; 
+		// if(current_tail <= current_index + 1 ||current_tail <= 0 || current_tail > capacity()) {
+		// 	*ptrptr = NULL;
+		// 	return false;
+		// }
+		// _tail -= 1;
+		// // size_t current_index = index();
+		// // if(_tail < index()) _tail = index();
+		// //*ptrptr = _buf[current_tail - 1];
+		// *ptrptr = Atomic::load((void**)&_buf[current_tail - 1]);
+		// return true;
+		// *ptrptr = NULL;
+		// return false;
+		// MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
+		size_t current_index = index_atomic_for_dequeue();
+		size_t current_tail = tail_atomic(); 
+		if(_buf == NULL || current_tail <= current_index || current_tail <= 0 || current_tail > capacity()) {
+			*ptrptr = NULL;
+			return false;
+		}
+		//_tail -= 1;
+		//*ptrptr = _buf[current_tail - 1];
+		set_tail_atomic(current_tail-1);  // for consumer, update first, then take the content.
+		*ptrptr = Atomic::load((void**)&_buf[current_tail - 1]);
+		return true;
+} 
 PrefetchQueueSet::PrefetchQueueSet() :
   PtrQueueSet(),
   _shared_prefetch_queue(this, true /* permanent */),

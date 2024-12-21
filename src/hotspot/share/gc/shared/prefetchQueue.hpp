@@ -59,7 +59,7 @@ private:
   template<typename Filter>
   inline void apply_filter(Filter filter_out);
 
-  
+
 
 public:
   PrefetchQueue(PrefetchQueueSet* qset, bool permanent = false);
@@ -70,6 +70,49 @@ public:
       _buf=NULL;
     }
   }
+	/**
+	 *  MT safe version.
+	 * 
+	 * Parameter, _index.
+	 * 		element index, needs to transfer to byte index
+	 * 
+	 */
+	void set_index_atomic(size_t elem_index) {
+		size_t byte_index = index_to_byte_index(elem_index);
+		// assert(byte_index <= capacity_in_bytes(), "precondition");
+		//_index = byte_index;
+		Atomic::store(byte_index, &_index);  // read/write on _index is byte granulaity.
+	}
+	// return element index.
+	// Only 1 thread enqueue
+	size_t index_atomic(){
+		return byte_index_to_index(Atomic::load(&_index)); // read/write on _index is byte granulaity.
+	}
+	size_t index_atomic_for_dequeue(){
+		return byte_index_to_index_for_dequeue(Atomic::load(&_index)); // read/write on _index is byte granulaity.
+	}
+	/**
+	 * For tail, we use the element index directly ?
+	 * 
+	 * _tail is used in _element index, void* granularity. 
+	 * 
+	 */
+	void set_tail_atomic(size_t elem_index) {
+		// assert(elem_index <= capacity(), "precondition");
+		//_index = byte_index;
+		Atomic::store(elem_index, &_tail);
+	}
+	// return element index
+	size_t tail_atomic(){
+		return Atomic::load(&_tail);
+	}
+	// Discard all the enqueued items 
+	// Set the prefetch queue as empty.
+	void clear_queue_content(){
+		set_index_atomic(capacity_for_clear());	// is_empty() return 0.
+		set_tail_atomic(capacity_for_clear());  // capacity() returns element index
+	}
+
 
   bool set_in_processing() {
     if(_in_processing == true) return false;
@@ -122,7 +165,7 @@ public:
     if (!Universe::heap()->is_in_reserved(ptr)) return;
     enqueue_known_active(ptr);
   }
-
+  // Only 1 thread enqueue, but 1 thread keeps dequeuing at the same time.
   void enqueue_known_active(void* ptr)  {
     while (_index == 0) {
       handle_zero_index();
@@ -130,84 +173,25 @@ public:
     assert(_buf != NULL, "postcondition");
     assert(index() > 0, "postcondition");
     assert(index() <= capacity(), "invariant");
-    _index -= _element_size;
-    _buf[index()] = ptr;
+    //_index -= _element_size;
+    size_t cur_index = index_atomic();
+    size_t new_index = cur_index -1;  // element index, move 1
+    _buf[new_index] = ptr;
+    set_index_atomic(new_index);	// update idnex after the writing is done.
   }
 
   size_t prefetch_queue_threshold() {
     return PrefetchQueueThreshold;
   }
 
-  void handle_zero_index() {
-    MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
-
-    // while(_in_dequeue == true) {
-    //   continue;
-    // }
-    // if(Atomic::cmpxchg(true, &_in_dequeue, false ) == true) {
-    //   // _in_dequeue = false;
-    //   return;
-    // }
-    // _in_dequeue = true;
-    assert(index() == 0, "precondition");
-    // This thread records the full buffer and allocates a new one (while
-    // holding the lock if there is one).
-    if (_buf != NULL) {
-      // Two-fingered compaction toward the end.
-      size_t remaining_objs = MIN2(prefetch_queue_threshold(), _tail-index());
-      void** src = &_buf[index()];
-      void** dst = &_buf[index() + remaining_objs - 1];
-      void** end = &_buf[capacity() - 1];
-      // assert(src <= dst, "invariant");
-      for ( ; src <= dst; dst --, end --) {
-        *end = *dst;
-      }
-      // dst points to the lowest retained entry, or the end of the buffer
-      // if all the entries were filtered out.
-      set_index(capacity() - remaining_objs);
-      _tail = capacity();
-    }
-    else {
-      // Set capacity in case this is the first allocation.
-      set_capacity(qset()->buffer_size());
-      // Allocate a new buffer.
-      // _buf = NEW_C_HEAP_ARRAY(void*, qset()->buffer_size(), mtGC)
-      _buf = qset()->allocate_buffer();
-      reset();
-    }
-    // _in_dequeue = false;
-  }
-
-  bool dequeue(void** ptrptr) { 
-
-    // while(_in_dequeue == true) {
-    //   continue;
-    // }
-    // if(Atomic::cmpxchg(true, &_in_dequeue, false ) == true) {
-    //   *ptrptr = NULL;
-    //   return false;
-    // }
-    // if(_in_dequeue == true) {
-    //     *ptrptr = NULL;
-    //     return false;
-    // }
-    MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
-    size_t current_index = index();
-    size_t current_tail = _tail; 
-    if(current_tail == current_index) {
-      *ptrptr = NULL;
-
-      // _in_dequeue = false;
-      return false;
-    }
-    _tail -= 1;
-    *ptrptr = _buf[current_tail - 1];
-
-
-    // _in_dequeue = false;
-    return true;
-    
-  }
+  void handle_zero_index();
+  /**
+   * The queue may be written during the deque,read.
+   *
+   * In theory, only 1 thread deques, but 1 thread is enquing at the same time.
+   *
+   */
+  bool dequeue(void** ptrptr);
 };
 
 class PrefetchQueueSet: public PtrQueueSet {

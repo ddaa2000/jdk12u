@@ -82,6 +82,12 @@ class PtrQueue {
     return _capacity_in_bytes;
   }
 
+    // Get the capacity, in bytes.  The capacity must have been set.
+    size_t capacity_in_bytes_for_clear() const {
+      // assert(_capacity_in_bytes > 0, "capacity not set");
+      return _capacity_in_bytes;
+    }
+
   void set_capacity(size_t entries) {
     size_t byte_capacity = index_to_byte_index(entries);
     assert(_capacity_in_bytes == 0 || _capacity_in_bytes == byte_capacity,
@@ -92,9 +98,16 @@ class PtrQueue {
 
   static size_t byte_index_to_index(size_t ind) {
     assert(is_aligned(ind, _element_size), "precondition");
+    // if(!is_aligned(ind, _element_size))
+    // tty->print("Not aligned! %lu\n", ind);
     return ind / _element_size;
   }
-
+  static size_t byte_index_to_index_for_dequeue(size_t ind) {
+    // assert(is_aligned(ind, _element_size), "precondition");
+    if(!is_aligned(ind, _element_size))
+      tty->print("Not aligned! %lu\n", ind);
+    return ind / _element_size;
+  }
   static size_t index_to_byte_index(size_t ind) {
     return ind * _element_size;
   }
@@ -115,6 +128,10 @@ protected:
 
   size_t capacity() const {
     return byte_index_to_index(capacity_in_bytes());
+  }
+
+  size_t capacity_for_clear() const {
+    return byte_index_to_index(capacity_in_bytes_for_clear());
   }
 
   // If there is a lock associated with this buffer, this is that lock.
