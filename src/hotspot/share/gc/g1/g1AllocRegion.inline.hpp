@@ -56,6 +56,10 @@ inline HeapWord* G1AllocRegion::par_allocate(HeapRegion* alloc_region, size_t wo
   return par_allocate(alloc_region, word_size, word_size, &temp);
 }
 
+/**
+ * Tag : allocate object into region concurrently
+ * 
+ */
 inline HeapWord* G1AllocRegion::par_allocate(HeapRegion* alloc_region,
                                              size_t min_word_size,
                                              size_t desired_word_size,
@@ -63,10 +67,10 @@ inline HeapWord* G1AllocRegion::par_allocate(HeapRegion* alloc_region,
   assert(alloc_region != NULL, "pre-condition");
   assert(!alloc_region->is_empty(), "pre-condition");
 
-  if (!_bot_updates) {
+  if (!_bot_updates) {  // [?] BOT updates ??
     return alloc_region->par_allocate_no_bot_updates(min_word_size, desired_word_size, actual_word_size);
   } else {
-    return alloc_region->par_allocate(min_word_size, desired_word_size, actual_word_size);
+    return alloc_region->par_allocate(min_word_size, desired_word_size, actual_word_size);   // [?] 3 parameter par_allocate function ??
   }
 }
 
@@ -75,6 +79,13 @@ inline HeapWord* G1AllocRegion::attempt_allocation(size_t word_size) {
   return attempt_allocation(word_size, word_size, &temp);
 }
 
+
+/**
+ * Tag : allocate objects into current region
+ * 
+ * Current region is recored by class global variable : G1AllocRegion::_alloc_region;
+ * 
+ */
 inline HeapWord* G1AllocRegion::attempt_allocation(size_t min_word_size,
                                                    size_t desired_word_size,
                                                    size_t* actual_word_size) {
@@ -90,10 +101,27 @@ inline HeapWord* G1AllocRegion::attempt_allocation(size_t min_word_size,
   return NULL;
 }
 
+
+
+/**
+ * Tag : object allocation
+ * 
+ *  1) Allocate objects into current regions
+ *  2) Or allocate a new (Eden) region ?
+ * 
+ * [?] Purpose of the &temp ??
+ * 
+ * More Explanation
+ * 
+ *  Locked : allocate objects into a region concurrently
+ * 
+ */
+
 inline HeapWord* G1AllocRegion::attempt_allocation_locked(size_t word_size) {
   size_t temp;
   return attempt_allocation_locked(word_size, word_size, &temp);
 }
+
 
 inline HeapWord* G1AllocRegion::attempt_allocation_locked(size_t min_word_size,
                                                           size_t desired_word_size,
@@ -106,7 +134,7 @@ inline HeapWord* G1AllocRegion::attempt_allocation_locked(size_t min_word_size,
     return result;
   }
 
-  retire(true /* fill_up */);
+  retire(true /* fill_up */);  //[?] Use fake oop fill up current region ?
   result = new_alloc_region_and_allocate(desired_word_size, false /* force */);
   if (result != NULL) {
     *actual_word_size = desired_word_size;

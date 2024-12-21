@@ -129,6 +129,12 @@ public:
   virtual void prepare_for_verify();
   virtual void verify(VerifyOption option /* ignored */);
   virtual bool is_oop(oop object) const;
+
+  // debug - prefetch support
+  // fake implementatio
+  void prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param );
+
+
 };
 
 #endif // SHARE_GC_Z_ZCOLLECTEDHEAP_HPP

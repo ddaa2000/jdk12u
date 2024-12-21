@@ -139,6 +139,11 @@ public:
   virtual void prepare_for_verify() {}
   virtual void verify(VerifyOption option) {}
 
+  // debug - prefetch support
+  // fake implementatio
+  void prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param );
+
+
   virtual jlong millis_since_last_gc() {
     // Report time since the VM start
     return os::elapsed_counter() / NANOSECS_PER_MILLISEC;

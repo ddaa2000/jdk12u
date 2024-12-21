@@ -164,6 +164,13 @@ void G1FullCollector::prepare_collection() {
   clear_and_activate_derived_pointers();
 }
 
+
+/**
+ * Tag : G1 STW Full heap GC.
+ * 
+ * [?] How to confirm that this is a STW GC ?
+ * 
+ */
 void G1FullCollector::collect() {
   phase1_mark_live_objects();
   verify_after_marking();

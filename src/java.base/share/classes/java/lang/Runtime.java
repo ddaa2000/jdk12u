@@ -38,6 +38,11 @@ import jdk.internal.access.SharedSecrets;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 
+
+// Debug
+import java.lang.Object;
+import java.util.Objects;
+
 /**
  * Every Java application has a single instance of class
  * {@code Runtime} that allows the application to interface with
@@ -655,6 +660,27 @@ public class Runtime {
      * means of invoking this method.
      */
     public native void gc();
+
+
+    /**
+     * Debug - Pass object information from Java apps
+     * 
+     */
+    public native void test();
+
+    /**
+     * Debug - Pass an object into the JNI call
+     * Limitations : the name of the function can't contail "_".
+     * 
+     * @param   obj1   The 1st object instance, passed from application.
+     * @param   obj2   The 2nd object instance, passed from application.
+     * @param   obj3   The 3rd object instance, passed from application.
+     * @param   obj4   The 4th object instance, passed from application.
+     * @param   obj5   The 5th object instance, passed from application.
+     * @param   num_of_valid_param   the number of valide object parameters. Otehrs are NULL.
+     */
+    public native void testWithParameter(Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, int num_of_valid_param);
+
 
     /**
      * Runs the finalization methods of any objects pending finalization.

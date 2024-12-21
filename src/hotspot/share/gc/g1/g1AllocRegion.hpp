@@ -37,7 +37,17 @@ class G1CollectedHeap;
 // implementation assumes that fast-path allocations will be lock-free
 // and a lock will need to be taken when the active region needs to be
 // replaced.
-
+/**
+ * Tag : Region allocation policy 
+ * 
+ * G1AllocRegion
+ *    MutatorAllocRegion
+ * 
+ *    G1GCAllocRegion
+ *        SurvivorGCAllocRegion
+ *        OldGCAllocRegion
+ *    
+ */
 class G1AllocRegion {
 
 private:
@@ -201,6 +211,12 @@ public:
              HeapWord* result = NULL) PRODUCT_RETURN;
 };
 
+
+
+/**
+ * Tag : Region allocation policy for Mutator 
+ * 
+ */
 class MutatorAllocRegion : public G1AllocRegion {
 private:
   // Keeps track of the total waste generated during the current
@@ -245,11 +261,26 @@ public:
 
   virtual void init();
 };
-// Common base class for allocation regions used during GC.
+
+
+
+
+/**
+ * Common base class for allocation regions used during GC.
+ * 
+ * Tag 
+ * 
+ * Parameters
+ *    _state   :
+ *    _purpose : specify the  state  of retired region
+ *        This paramter is setted by the inherited class contructor.
+ * 
+ * 
+ */
 class G1GCAllocRegion : public G1AllocRegion {
 protected:
   G1EvacStats* _stats;
-  InCSetState::in_cset_state_t _purpose;
+  InCSetState::in_cset_state_t _purpose;    //[?] specify Old or Young space ?
 
   virtual HeapRegion* allocate_new_region(size_t word_size, bool force);
   virtual void retire_region(HeapRegion* alloc_region, size_t allocated_bytes);
@@ -262,12 +293,29 @@ protected:
   }
 };
 
+
+/**
+ * Tag : Region allocation policy during survivor procedure 
+ * 
+ * Parameters
+ *    bot_updates : false, means ??
+ *    _prupose    : InCSetState::Young ?
+ *                    All the retired regions are still marked as Young Space region?
+ * More Explanation
+ * 
+ */
 class SurvivorGCAllocRegion : public G1GCAllocRegion {
 public:
   SurvivorGCAllocRegion(G1EvacStats* stats)
   : G1GCAllocRegion("Survivor GC Alloc Region", false /* bot_updates */, stats, InCSetState::Young) { }
 };
 
+
+
+/**
+ * Tag : Region allocation policy fuing Old GC procedure
+ * 
+ */
 class OldGCAllocRegion : public G1GCAllocRegion {
 public:
   OldGCAllocRegion(G1EvacStats* stats)

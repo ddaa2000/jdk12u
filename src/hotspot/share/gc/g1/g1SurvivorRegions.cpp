@@ -39,6 +39,10 @@ uint G1SurvivorRegions::length() const {
   return (uint)_regions->length();
 }
 
+/**
+ * Tag : Set Survivoir regions as Eden regions, before STW Young GC.
+ * 
+ */
 void G1SurvivorRegions::convert_to_eden() {
   for (GrowableArrayIterator<HeapRegion*> it = _regions->begin();
        it != _regions->end();

@@ -31,14 +31,23 @@
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
+
+#include "gc/g1/g1CollectedHeap.hpp"
+
+
 class G1ThreadLocalData {
 private:
   SATBMarkQueue  _satb_mark_queue;
-  DirtyCardQueue _dirty_card_queue;
+  DirtyCardQueue _dirty_card_queue;  // [?] Mutator thread local dirty card queue ?
+
+  // Haoran: modify
+  PrefetchQueue  _prefetch_queue;
 
   G1ThreadLocalData() :
       _satb_mark_queue(&G1BarrierSet::satb_mark_queue_set()),
-      _dirty_card_queue(&G1BarrierSet::dirty_card_queue_set()) {}
+      _dirty_card_queue(&G1BarrierSet::dirty_card_queue_set()),
+      _prefetch_queue(&(((G1CollectedHeap*)Universe::heap())->prefetch_queue_set()))
+       {}
 
   static G1ThreadLocalData* data(Thread* thread) {
     assert(UseG1GC, "Sanity");
@@ -52,6 +61,11 @@ private:
   static ByteSize dirty_card_queue_offset() {
     return Thread::gc_data_offset() + byte_offset_of(G1ThreadLocalData, _dirty_card_queue);
   }
+  
+  static ByteSize prefetch_queue_offset() {
+    return Thread::gc_data_offset() + byte_offset_of(G1ThreadLocalData, _prefetch_queue);
+  }
+
 
 public:
   static void create(Thread* thread) {
@@ -69,6 +83,11 @@ public:
   static DirtyCardQueue& dirty_card_queue(Thread* thread) {
     return data(thread)->_dirty_card_queue;
   }
+
+  static PrefetchQueue& prefetch_queue(Thread* thread) {
+    return data(thread)->_prefetch_queue;
+  }
+
 
   static ByteSize satb_mark_queue_active_offset() {
     return satb_mark_queue_offset() + SATBMarkQueue::byte_offset_of_active();
@@ -89,6 +108,19 @@ public:
   static ByteSize dirty_card_queue_buffer_offset() {
     return dirty_card_queue_offset() + DirtyCardQueue::byte_offset_of_buf();
   }
+
+  static ByteSize prefetch_queue_active_offset() {
+    return prefetch_queue_offset() + PrefetchQueue::byte_offset_of_active();
+  }
+
+  static ByteSize prefetch_queue_index_offset() {
+    return prefetch_queue_offset() + PrefetchQueue::byte_offset_of_index();
+  }
+
+  static ByteSize prefetch_queue_buffer_offset() {
+    return prefetch_queue_offset() + PrefetchQueue::byte_offset_of_buf();
+  }
+
 };
 
 #endif // SHARE_GC_G1_G1THREADLOCALDATA_HPP

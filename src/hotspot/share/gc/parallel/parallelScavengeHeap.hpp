@@ -226,6 +226,11 @@ class ParallelScavengeHeap : public CollectedHeap {
   jlong millis_since_last_gc();
 
   void prepare_for_verify();
+
+  // function paramter enqueu
+  // G1CollectedHeap implementation
+  virtual void prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param );
+
   PSHeapSummary create_ps_heap_summary();
   virtual void print_on(outputStream* st) const;
   virtual void print_on_error(outputStream* st) const;

@@ -173,6 +173,7 @@
   LOG_TAG(vtables) \
   LOG_TAG(vtablestubs) \
   LOG_TAG(workgang) \
+  LOG_TAG(prefetch) /* support for prefetch */ \
   LOG_TAG_LIST_EXT
 
 #define PREFIX_LOG_TAG(T) (LogTag::_##T)

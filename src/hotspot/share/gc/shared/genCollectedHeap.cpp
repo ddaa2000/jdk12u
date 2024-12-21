@@ -1205,6 +1205,14 @@ void GenCollectedHeap::prepare_for_verify() {
   generation_iterate(&blk, false);
 }
 
+// debug - prefetch
+void GenCollectedHeap::prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param ){
+
+  guarantee(false, "%s, Can NOT reach here.\n",__func__);
+
+}
+
+
 void GenCollectedHeap::generation_iterate(GenClosure* cl,
                                           bool old_to_young) {
   if (old_to_young) {

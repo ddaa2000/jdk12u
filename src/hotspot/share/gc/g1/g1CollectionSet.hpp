@@ -41,8 +41,11 @@ class G1CollectionSet {
   G1CollectedHeap* _g1h;
   G1Policy* _policy;
 
-  CollectionSetChooser* _cset_chooser;
+  CollectionSetChooser* _cset_chooser;  // [?]
 
+  //
+  // Record the number of eden, survivor, old regions in the Collection Set.
+  //
   uint _eden_region_length;
   uint _survivor_region_length;
   uint _old_region_length;
@@ -50,17 +53,17 @@ class G1CollectionSet {
   // The actual collection set as a set of region indices.
   // All entries in _collection_set_regions below _collection_set_cur_length are
   // assumed to be valid entries.
-  // We assume that at any time there is at most only one writer and (one or more)
+  // We assume that at any time there is at most only one writer and (one or more)   // Why can it assume that there is only 1 writer ??
   // concurrent readers. This means we are good with using storestore and loadload
   // barriers on the writer and reader respectively only.
-  uint* _collection_set_regions;
-  volatile size_t _collection_set_cur_length;
-  size_t _collection_set_max_length;
+  uint* _collection_set_regions;                //[?] Record the region entries of the Collection Set.
+  volatile size_t _collection_set_cur_length;   // The lenth of _collection_set_regions
+  size_t _collection_set_max_length;            // The max length of _collection_set_regions
 
   // When doing mixed collections we can add old regions to the collection, which
   // can be collected if there is enough time. We call these optional regions and
   // the pointer to these regions are stored in the array below.
-  HeapRegion** _optional_regions;
+  HeapRegion** _optional_regions;       // [?] The Old Space regions to be Evacated during Young GC. Mixed Mode.
   uint _optional_region_length;
   uint _optional_region_max_length;
 
@@ -179,6 +182,11 @@ public:
   void reset_bytes_used_before() {
     _bytes_used_before = 0;
   }
+
+
+  //
+  // [?] Build the Collection Set ??
+  //
 
   // Choose a new collection set.  Marks the chosen regions as being
   // "in_collection_set".

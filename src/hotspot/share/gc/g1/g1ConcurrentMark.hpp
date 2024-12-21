@@ -285,6 +285,13 @@ public:
   bool wait_until_scan_finished();
 };
 
+
+
+// Haoran: Modify
+class G1ConcurrentPrefetch;
+class G1ConcurrentPrefetchThread;
+class G1PFTask;
+
 // This class manages data structures and methods for doing liveness analysis in
 // G1's concurrent cycle.
 class G1ConcurrentMark : public CHeapObj<mtGC> {
@@ -297,7 +304,15 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   friend class G1CMConcurrentMarkingTask;
   friend class G1CMRemarkTask;
   friend class G1CMTask;
+  // Haoran: modify
+  friend class G1ConcurrentPrefetch;
+  friend class G1ConcurrentPrefetchThread;
+  friend class G1PFTask;
+  friend class G1PFConcurrentPrefetchingTask;
+  friend class G1CollectedHeap;
 
+  // [?] How many concurrent marking threads ??
+  //
   G1ConcurrentMarkThread* _cm_thread;     // The thread doing the work
   G1CollectedHeap*        _g1h;           // The heap
   bool                    _completed_initialization; // Set to true when initialization is complete
@@ -312,6 +327,8 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   MemRegion const         _heap;
 
   // Root region tracking and claiming
+  // [?] Initial phase add regions into the Root Region ??
+  //
   G1CMRootRegions         _root_regions;
 
   // For grey objects
@@ -366,7 +383,7 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
 
   double*   _accum_task_vtime;   // Accumulated task vtime
 
-  WorkGang* _concurrent_workers;
+  WorkGang* _concurrent_workers;     // [?] Manage the concurrent GC threads
   uint      _num_concurrent_workers; // The number of marking worker threads we're using
   uint      _max_concurrent_workers; // Maximum number of marking worker threads
 
@@ -451,7 +468,8 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   // Access / manipulation of the overflow flag which is set to
   // indicate that the global stack has overflown
   bool has_overflown()           { return _has_overflown; }
-  void set_has_overflown()       { _has_overflown = true; }
+  // void set_has_overflown()       { _has_overflown = true; }
+  void set_has_overflown()       {/*Haoran: modify*/ ShouldNotReachHere(); _has_overflown = true; }
   void clear_has_overflown()     { _has_overflown = false; }
   bool restart_for_overflow()    { return _restart_for_overflow; }
 

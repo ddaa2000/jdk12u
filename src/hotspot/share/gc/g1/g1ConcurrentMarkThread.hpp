@@ -31,8 +31,24 @@
 class G1ConcurrentMark;
 class G1Policy;
 
-// The concurrent mark thread triggers the various steps of the concurrent marking
-// cycle, including various marking cleanup.
+/**
+ * The concurrent mark thread triggers the various steps of the concurrent marking
+ * cycle, including various marking cleanup.
+ * 
+ * Tag 
+ * 
+ * [?] How many concurrent threads is running ?
+ * 
+ * [?] How many concurrent threads for each region ?
+ * 
+ * 
+ * [?] G1ConcurrentMarkThread -> ConcurrentGCThread 
+ *  => There are several kinds of concurrent gc tasks ??
+ * 
+ * 
+ * 
+ */
+
 class G1ConcurrentMarkThread: public ConcurrentGCThread {
   friend class VMStructs;
 

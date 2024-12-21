@@ -550,6 +550,13 @@ void ParallelScavengeHeap::prepare_for_verify() {
   ensure_parsability(false);  // no need to retire TLABs for verification
 }
 
+void ParallelScavengeHeap::prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param ){
+
+	//debug fucntion, get a useless queue.
+  guarantee(false, "%s, Can NOT reach here.\n",__func__);
+
+}
+
 PSHeapSummary ParallelScavengeHeap::create_ps_heap_summary() {
   PSOldGen* old = old_gen();
   HeapWord* old_committed_end = (HeapWord*)old->virtual_space()->committed_high_addr();

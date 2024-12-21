@@ -77,10 +77,13 @@ Monitor* SerializePage_lock           = NULL;
 Monitor* Threads_lock                 = NULL;
 Mutex*   NonJavaThreadsList_lock      = NULL;
 Monitor* CGC_lock                     = NULL;
+Monitor* CPF_lock                     = NULL; //Haoran: modify
 Monitor* STS_lock                     = NULL;
 Monitor* FullGCCount_lock             = NULL;
 Mutex*   SATB_Q_FL_lock               = NULL;
 Monitor* SATB_Q_CBL_mon               = NULL;
+Mutex*   PREFETCH_Q_FL_lock           = NULL; //Haoran: modify
+Monitor* PREFETCH_Q_CBL_mon           = NULL; //Haoran: modify
 Mutex*   Shared_SATB_Q_lock           = NULL;
 Mutex*   DirtyCardQ_FL_lock           = NULL;
 Monitor* DirtyCardQ_CBL_mon           = NULL;
@@ -202,6 +205,9 @@ void mutex_init() {
   def(tty_lock                     , PaddedMutex  , tty,         true,  Monitor::_safepoint_check_never);      // allow to lock in VM
 
   def(CGC_lock                     , PaddedMonitor, special,     true,  Monitor::_safepoint_check_never);      // coordinate between fore- and background GC
+  //Haoran: modify
+  def(CPF_lock                     , PaddedMonitor, special,     true,  Monitor::_safepoint_check_never);      // coordinate between fore- and background GC
+  
   def(STS_lock                     , PaddedMonitor, leaf,        true,  Monitor::_safepoint_check_never);
 
   def(VMWeakAlloc_lock             , PaddedMutex  , vmweak,      true,  Monitor::_safepoint_check_never);
@@ -216,6 +222,8 @@ void mutex_init() {
   if (UseG1GC) {
     def(SATB_Q_FL_lock             , PaddedMutex  , access,      true,  Monitor::_safepoint_check_never);
     def(SATB_Q_CBL_mon             , PaddedMonitor, access,      true,  Monitor::_safepoint_check_never);
+    def(PREFETCH_Q_FL_lock         , PaddedMutex  , access,      true,  Monitor::_safepoint_check_never); // Haoran: modify
+    def(PREFETCH_Q_CBL_mon         , PaddedMonitor, access,      true,  Monitor::_safepoint_check_never); // Haoran: modify
     def(Shared_SATB_Q_lock         , PaddedMutex  , access + 1,  true,  Monitor::_safepoint_check_never);
 
     def(DirtyCardQ_FL_lock         , PaddedMutex  , access,      true,  Monitor::_safepoint_check_never);

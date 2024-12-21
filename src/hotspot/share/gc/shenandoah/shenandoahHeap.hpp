@@ -153,6 +153,12 @@ public:
   void prepare_for_verify();
   void verify(VerifyOption vo);
 
+
+  // debug - prefetch support
+  // fake implementatio
+  void prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param );
+
+
 // ---------- Heap counters and metrics
 //
 private:

@@ -39,12 +39,12 @@
 #include "utilities/debug.hpp"
 
 inline void MetadataVisitingOopIterateClosure::do_cld(ClassLoaderData* cld) {
-  cld->oops_do(this, ClassLoaderData::_claim_strong);
+	cld->oops_do(this, ClassLoaderData::_claim_strong);
 }
 
 inline void MetadataVisitingOopIterateClosure::do_klass(Klass* k) {
-  ClassLoaderData* cld = k->class_loader_data();
-  MetadataVisitingOopIterateClosure::do_cld(cld);
+	ClassLoaderData* cld = k->class_loader_data();
+	MetadataVisitingOopIterateClosure::do_cld(cld);
 }
 
 #ifdef ASSERT
@@ -52,14 +52,14 @@ inline void MetadataVisitingOopIterateClosure::do_klass(Klass* k) {
 // The closures can turn is off by overriding should_verify_oops().
 template <typename T>
 void OopIterateClosure::verify(T* p) {
-  if (should_verify_oops()) {
-    T heap_oop = RawAccess<>::oop_load(p);
-    if (!CompressedOops::is_null(heap_oop)) {
-      oop o = CompressedOops::decode_not_null(heap_oop);
-      assert(Universe::heap()->is_in_closed_subset(o),
-             "should be in closed *p " PTR_FORMAT " " PTR_FORMAT, p2i(p), p2i(o));
-    }
-  }
+	if (should_verify_oops()) {
+		T heap_oop = RawAccess<>::oop_load(p);
+		if (!CompressedOops::is_null(heap_oop)) {
+			oop o = CompressedOops::decode_not_null(heap_oop);
+			assert(Universe::heap()->is_in_closed_subset(o),
+						 "should be in closed *p " PTR_FORMAT " " PTR_FORMAT, p2i(p), p2i(o));
+		}
+	}
 }
 #endif
 
@@ -107,27 +107,27 @@ void OopIterateClosure::verify(T* p) {
 template <typename T, typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<IsSame<Receiver, Base>::value, void>::type
 call_do_oop(void (Receiver::*)(T*), void (Base::*)(T*), OopClosureType* closure, T* p) {
-  closure->do_oop(p);
+	closure->do_oop(p);
 }
 
 template <typename T, typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<!IsSame<Receiver, Base>::value, void>::type
 call_do_oop(void (Receiver::*)(T*), void (Base::*)(T*), OopClosureType* closure, T* p) {
-  // Sanity check
-  STATIC_ASSERT((!IsSame<OopClosureType, OopIterateClosure>::value));
-  closure->OopClosureType::do_oop(p);
+	// Sanity check
+	STATIC_ASSERT((!IsSame<OopClosureType, OopIterateClosure>::value));
+	closure->OopClosureType::do_oop(p);
 }
 
 template <typename OopClosureType, typename T>
 inline void Devirtualizer::do_oop_no_verify(OopClosureType* closure, T* p) {
-  call_do_oop<T>(&OopClosureType::do_oop, &OopClosure::do_oop, closure, p);
+	call_do_oop<T>(&OopClosureType::do_oop, &OopClosure::do_oop, closure, p);
 }
 
 template <typename OopClosureType, typename T>
 inline void Devirtualizer::do_oop(OopClosureType* closure, T* p) {
-  debug_only(closure->verify(p));
+	debug_only(closure->verify(p));
 
-  do_oop_no_verify(closure, p);
+	do_oop_no_verify(closure, p);
 }
 
 // Implementation of the non-virtual do_metadata dispatch.
@@ -135,18 +135,18 @@ inline void Devirtualizer::do_oop(OopClosureType* closure, T* p) {
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<IsSame<Receiver, Base>::value, bool>::type
 call_do_metadata(bool (Receiver::*)(), bool (Base::*)(), OopClosureType* closure) {
-  return closure->do_metadata();
+	return closure->do_metadata();
 }
 
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<!IsSame<Receiver, Base>::value, bool>::type
 call_do_metadata(bool (Receiver::*)(), bool (Base::*)(), OopClosureType* closure) {
-  return closure->OopClosureType::do_metadata();
+	return closure->OopClosureType::do_metadata();
 }
 
 template <typename OopClosureType>
 inline bool Devirtualizer::do_metadata(OopClosureType* closure) {
-  return call_do_metadata(&OopClosureType::do_metadata, &OopIterateClosure::do_metadata, closure);
+	return call_do_metadata(&OopClosureType::do_metadata, &OopIterateClosure::do_metadata, closure);
 }
 
 // Implementation of the non-virtual do_klass dispatch.
@@ -154,18 +154,18 @@ inline bool Devirtualizer::do_metadata(OopClosureType* closure) {
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<IsSame<Receiver, Base>::value, void>::type
 call_do_klass(void (Receiver::*)(Klass*), void (Base::*)(Klass*), OopClosureType* closure, Klass* k) {
-  closure->do_klass(k);
+	closure->do_klass(k);
 }
 
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<!IsSame<Receiver, Base>::value, void>::type
 call_do_klass(void (Receiver::*)(Klass*), void (Base::*)(Klass*), OopClosureType* closure, Klass* k) {
-  closure->OopClosureType::do_klass(k);
+	closure->OopClosureType::do_klass(k);
 }
 
 template <typename OopClosureType>
 inline void Devirtualizer::do_klass(OopClosureType* closure, Klass* k) {
-  call_do_klass(&OopClosureType::do_klass, &OopIterateClosure::do_klass, closure, k);
+	call_do_klass(&OopClosureType::do_klass, &OopIterateClosure::do_klass, closure, k);
 }
 
 // Implementation of the non-virtual do_cld dispatch.
@@ -173,18 +173,18 @@ inline void Devirtualizer::do_klass(OopClosureType* closure, Klass* k) {
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<IsSame<Receiver, Base>::value, void>::type
 call_do_cld(void (Receiver::*)(ClassLoaderData*), void (Base::*)(ClassLoaderData*), OopClosureType* closure, ClassLoaderData* cld) {
-  closure->do_cld(cld);
+	closure->do_cld(cld);
 }
 
 template <typename Receiver, typename Base, typename OopClosureType>
 static typename EnableIf<!IsSame<Receiver, Base>::value, void>::type
 call_do_cld(void (Receiver::*)(ClassLoaderData*), void (Base::*)(ClassLoaderData*), OopClosureType* closure, ClassLoaderData* cld) {
-  closure->OopClosureType::do_cld(cld);
+	closure->OopClosureType::do_cld(cld);
 }
 
 template <typename OopClosureType>
 void Devirtualizer::do_cld(OopClosureType* closure, ClassLoaderData* cld) {
-  call_do_cld(&OopClosureType::do_cld, &OopIterateClosure::do_cld, closure, cld);
+	call_do_cld(&OopClosureType::do_cld, &OopIterateClosure::do_cld, closure, cld);
 }
 
 // Dispatch table implementation for *Klass::oop_oop_iterate
@@ -225,60 +225,60 @@ void Devirtualizer::do_cld(OopClosureType* closure, ClassLoaderData* cld) {
 template <typename OopClosureType>
 class OopOopIterateDispatch : public AllStatic {
 private:
-  class Table {
-  private:
-    template <typename KlassType, typename T>
-    static void oop_oop_iterate(OopClosureType* cl, oop obj, Klass* k) {
-      ((KlassType*)k)->KlassType::template oop_oop_iterate<T>(obj, cl);
-    }
+	class Table {
+	private:
+		template <typename KlassType, typename T>
+		static void oop_oop_iterate(OopClosureType* cl, oop obj, Klass* k) {
+			((KlassType*)k)->KlassType::template oop_oop_iterate<T>(obj, cl);
+		}
 
-    template <typename KlassType>
-    static void init(OopClosureType* cl, oop obj, Klass* k) {
-      OopOopIterateDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k);
-    }
+		template <typename KlassType>
+		static void init(OopClosureType* cl, oop obj, Klass* k) {
+			OopOopIterateDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k);
+		}
 
-    template <typename KlassType>
-    void set_init_function() {
-      _function[KlassType::ID] = &init<KlassType>;
-    }
+		template <typename KlassType>
+		void set_init_function() {
+			_function[KlassType::ID] = &init<KlassType>;
+		}
 
-    template <typename KlassType>
-    void set_resolve_function() {
-      // Size requirement to prevent word tearing
-      // when functions pointers are updated.
-      STATIC_ASSERT(sizeof(_function[0]) == sizeof(void*));
-      if (UseCompressedOops) {
-        _function[KlassType::ID] = &oop_oop_iterate<KlassType, narrowOop>;
-      } else {
-        _function[KlassType::ID] = &oop_oop_iterate<KlassType, oop>;
-      }
-    }
+		template <typename KlassType>
+		void set_resolve_function() {
+			// Size requirement to prevent word tearing
+			// when functions pointers are updated.
+			STATIC_ASSERT(sizeof(_function[0]) == sizeof(void*));
+			if (UseCompressedOops) {
+				_function[KlassType::ID] = &oop_oop_iterate<KlassType, narrowOop>;
+			} else {
+				_function[KlassType::ID] = &oop_oop_iterate<KlassType, oop>;
+			}
+		}
 
-    template <typename KlassType>
-    void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k) {
-      set_resolve_function<KlassType>();
-      _function[KlassType::ID](cl, obj, k);
-    }
+		template <typename KlassType>
+		void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k) {
+			set_resolve_function<KlassType>();
+			_function[KlassType::ID](cl, obj, k);
+		}
 
-  public:
-    void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*);
+	public:
+		void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*);
 
-    Table(){
-      set_init_function<InstanceKlass>();
-      set_init_function<InstanceRefKlass>();
-      set_init_function<InstanceMirrorKlass>();
-      set_init_function<InstanceClassLoaderKlass>();
-      set_init_function<ObjArrayKlass>();
-      set_init_function<TypeArrayKlass>();
-    }
-  };
+		Table(){
+			set_init_function<InstanceKlass>();
+			set_init_function<InstanceRefKlass>();
+			set_init_function<InstanceMirrorKlass>();
+			set_init_function<InstanceClassLoaderKlass>();
+			set_init_function<ObjArrayKlass>();
+			set_init_function<TypeArrayKlass>();
+		}
+	};
 
-  static Table _table;
+	static Table _table;
 public:
 
-  static void (*function(Klass* klass))(OopClosureType*, oop, Klass*) {
-    return _table._function[klass->id()];
-  }
+	static void (*function(Klass* klass))(OopClosureType*, oop, Klass*) {
+		return _table._function[klass->id()];
+	}
 };
 
 template <typename OopClosureType>
@@ -288,117 +288,123 @@ typename OopOopIterateDispatch<OopClosureType>::Table OopOopIterateDispatch<OopC
 template <typename OopClosureType>
 class OopOopIterateBoundedDispatch {
 private:
-  class Table {
-  private:
-    template <typename KlassType, typename T>
-    static void oop_oop_iterate_bounded(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
-      ((KlassType*)k)->KlassType::template oop_oop_iterate_bounded<T>(obj, cl, mr);
-    }
+	class Table {
+	private:
+		template <typename KlassType, typename T>
+		static void oop_oop_iterate_bounded(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
+			((KlassType*)k)->KlassType::template oop_oop_iterate_bounded<T>(obj, cl, mr);
+		}
 
-    template <typename KlassType>
-    static void init(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
-      OopOopIterateBoundedDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k, mr);
-    }
+		template <typename KlassType>
+		static void init(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
+			OopOopIterateBoundedDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k, mr);
+		}
 
-    template <typename KlassType>
-    void set_init_function() {
-      _function[KlassType::ID] = &init<KlassType>;
-    }
+		template <typename KlassType>
+		void set_init_function() {
+			_function[KlassType::ID] = &init<KlassType>;
+		}
 
-    template <typename KlassType>
-    void set_resolve_function() {
-      if (UseCompressedOops) {
-        _function[KlassType::ID] = &oop_oop_iterate_bounded<KlassType, narrowOop>;
-      } else {
-        _function[KlassType::ID] = &oop_oop_iterate_bounded<KlassType, oop>;
-      }
-    }
+		template <typename KlassType>
+		void set_resolve_function() {
+			if (UseCompressedOops) {
+				_function[KlassType::ID] = &oop_oop_iterate_bounded<KlassType, narrowOop>;
+			} else {
+				_function[KlassType::ID] = &oop_oop_iterate_bounded<KlassType, oop>;
+			}
+		}
 
-    template <typename KlassType>
-    void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
-      set_resolve_function<KlassType>();
-      _function[KlassType::ID](cl, obj, k, mr);
-    }
+		template <typename KlassType>
+		void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k, MemRegion mr) {
+			set_resolve_function<KlassType>();
+			_function[KlassType::ID](cl, obj, k, mr);
+		}
 
-  public:
-    void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*, MemRegion);
+	public:
+		void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*, MemRegion);
 
-    Table(){
-      set_init_function<InstanceKlass>();
-      set_init_function<InstanceRefKlass>();
-      set_init_function<InstanceMirrorKlass>();
-      set_init_function<InstanceClassLoaderKlass>();
-      set_init_function<ObjArrayKlass>();
-      set_init_function<TypeArrayKlass>();
-    }
-  };
+		Table(){
+			set_init_function<InstanceKlass>();
+			set_init_function<InstanceRefKlass>();
+			set_init_function<InstanceMirrorKlass>();
+			set_init_function<InstanceClassLoaderKlass>();
+			set_init_function<ObjArrayKlass>();
+			set_init_function<TypeArrayKlass>();
+		}
+	};
 
-  static Table _table;
+	static Table _table;
 public:
 
-  static void (*function(Klass* klass))(OopClosureType*, oop, Klass*, MemRegion) {
-    return _table._function[klass->id()];
-  }
+	static void (*function(Klass* klass))(OopClosureType*, oop, Klass*, MemRegion) {
+		return _table._function[klass->id()];
+	}
 };
 
 template <typename OopClosureType>
 typename OopOopIterateBoundedDispatch<OopClosureType>::Table OopOopIterateBoundedDispatch<OopClosureType>::_table;
 
-
+/**
+ * Tag : The abstract for oops closure work.
+ * 			Each kind of class should implement this abstract:
+ * 			: oop_oop_iterate_reverse<T>(oop, OopClosureType*)
+ * 			: init 
+ * 
+ */
 template <typename OopClosureType>
 class OopOopIterateBackwardsDispatch {
 private:
-  class Table {
-  private:
-    template <typename KlassType, typename T>
-    static void oop_oop_iterate_backwards(OopClosureType* cl, oop obj, Klass* k) {
-      ((KlassType*)k)->KlassType::template oop_oop_iterate_reverse<T>(obj, cl);
-    }
+	class Table {
+	private:
+		template <typename KlassType, typename T>
+		static void oop_oop_iterate_backwards(OopClosureType* cl, oop obj, Klass* k) {
+			((KlassType*)k)->KlassType::template oop_oop_iterate_reverse<T>(obj, cl);
+		}
 
-    template <typename KlassType>
-    static void init(OopClosureType* cl, oop obj, Klass* k) {
-      OopOopIterateBackwardsDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k);
-    }
+		template <typename KlassType>
+		static void init(OopClosureType* cl, oop obj, Klass* k) {
+			OopOopIterateBackwardsDispatch<OopClosureType>::_table.set_resolve_function_and_execute<KlassType>(cl, obj, k);
+		}
 
-    template <typename KlassType>
-    void set_init_function() {
-      _function[KlassType::ID] = &init<KlassType>;
-    }
+		template <typename KlassType>
+		void set_init_function() {
+			_function[KlassType::ID] = &init<KlassType>;
+		}
 
-    template <typename KlassType>
-    void set_resolve_function() {
-      if (UseCompressedOops) {
-        _function[KlassType::ID] = &oop_oop_iterate_backwards<KlassType, narrowOop>;
-      } else {
-        _function[KlassType::ID] = &oop_oop_iterate_backwards<KlassType, oop>;
-      }
-    }
+		template <typename KlassType>
+		void set_resolve_function() {
+			if (UseCompressedOops) {
+				_function[KlassType::ID] = &oop_oop_iterate_backwards<KlassType, narrowOop>;
+			} else {
+				_function[KlassType::ID] = &oop_oop_iterate_backwards<KlassType, oop>;
+			}
+		}
 
-    template <typename KlassType>
-    void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k) {
-      set_resolve_function<KlassType>();
-      _function[KlassType::ID](cl, obj, k);
-    }
+		template <typename KlassType>
+		void set_resolve_function_and_execute(OopClosureType* cl, oop obj, Klass* k) {
+			set_resolve_function<KlassType>();
+			_function[KlassType::ID](cl, obj, k);
+		}
 
-  public:
-    void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*);
+	public:
+		void (*_function[KLASS_ID_COUNT])(OopClosureType*, oop, Klass*);
 
-    Table(){
-      set_init_function<InstanceKlass>();
-      set_init_function<InstanceRefKlass>();
-      set_init_function<InstanceMirrorKlass>();
-      set_init_function<InstanceClassLoaderKlass>();
-      set_init_function<ObjArrayKlass>();
-      set_init_function<TypeArrayKlass>();
-    }
-  };
+		Table(){
+			set_init_function<InstanceKlass>();
+			set_init_function<InstanceRefKlass>();
+			set_init_function<InstanceMirrorKlass>();
+			set_init_function<InstanceClassLoaderKlass>();
+			set_init_function<ObjArrayKlass>();
+			set_init_function<TypeArrayKlass>();
+		}
+	};
 
-  static Table _table;
+	static Table _table;
 public:
 
-  static void (*function(Klass* klass))(OopClosureType*, oop, Klass*) {
-    return _table._function[klass->id()];
-  }
+	static void (*function(Klass* klass))(OopClosureType*, oop, Klass*) {
+		return _table._function[klass->id()];
+	}
 };
 
 template <typename OopClosureType>
@@ -407,17 +413,21 @@ typename OopOopIterateBackwardsDispatch<OopClosureType>::Table OopOopIterateBack
 
 template <typename OopClosureType>
 void OopIteratorClosureDispatch::oop_oop_iterate(OopClosureType* cl, oop obj, Klass* klass) {
-  OopOopIterateDispatch<OopClosureType>::function(klass)(cl, obj, klass);
+	OopOopIterateDispatch<OopClosureType>::function(klass)(cl, obj, klass);
 }
 
 template <typename OopClosureType>
 void OopIteratorClosureDispatch::oop_oop_iterate(OopClosureType* cl, oop obj, Klass* klass, MemRegion mr) {
-  OopOopIterateBoundedDispatch<OopClosureType>::function(klass)(cl, obj, klass, mr);
+	OopOopIterateBoundedDispatch<OopClosureType>::function(klass)(cl, obj, klass, mr);
 }
 
+/**
+ * Tag : Find the appropriate functions to traverse the object's fields.
+ * 
+ */
 template <typename OopClosureType>
 void OopIteratorClosureDispatch::oop_oop_iterate_backwards(OopClosureType* cl, oop obj, Klass* klass) {
-  OopOopIterateBackwardsDispatch<OopClosureType>::function(klass)(cl, obj, klass);
+	OopOopIterateBackwardsDispatch<OopClosureType>::function(klass)(cl, obj, klass);
 }
 
 #endif // SHARE_VM_MEMORY_ITERATOR_INLINE_HPP

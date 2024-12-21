@@ -68,7 +68,17 @@ class G1HeapRegionTable : public G1BiasedMappedArray<HeapRegion*> {
 //   number of regions+1 for which we have HeapRegions.
 // * max_length() returns the maximum number of regions the heap can have.
 //
-
+//
+// Tag : G1 Heap Region Management  
+// 
+// [x] What's the difference between "commited regions" and "allocated regions" ?
+//    => commited  : The heap size of current heap. 
+//                    For octupus, we limit the commited regions range for each Memory server heap.
+//    => Allocated : Regions which are allocated to young/old space.
+//
+//  Overview:
+//    |--- Allocated to Young/Old space --- | --- commited regions --- |----- Xmx size of heap --- | 
+//
 class HeapRegionManager: public CHeapObj<mtGC> {
   friend class VMStructs;
   friend class HeapRegionClaimer;

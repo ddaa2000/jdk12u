@@ -1219,6 +1219,14 @@ void ShenandoahHeap::prepare_for_verify() {
   }
 }
 
+// debug - prefetch
+void ShenandoahHeap::prefetch_enque(JavaThread* jthread, oop obj1, oop obj2, oop obj3, oop obj4, oop obj5, int num_of_valid_param ){
+
+  guarantee(false, "%s, Can NOT reach here.\n",__func__);
+
+}
+
+
 void ShenandoahHeap::print_gc_threads_on(outputStream* st) const {
   workers()->print_worker_threads_on(st);
   if (ShenandoahStringDedup::is_enabled()) {
