@@ -70,6 +70,19 @@
 #include "runtime/vmThread.hpp"
 #include "services/mallocTracker.hpp"
 
+
+#include "gc/shenandoah/shenandoahConcurrentPrefetch.inline.hpp"
+#include "gc/shenandoah/shenandoahControlPrefetchThread.hpp"
+#include "gc/shenandoah/shenandoahSATBMarkQueueSet.hpp"
+
+#include <linux/kernel.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <sys/mman.h>  
+#include <sys/errno.h>
+
+
+
 #ifdef ASSERT
 template <class T>
 void ShenandoahAssertToSpaceClosure::do_oop_work(T* p) {
@@ -174,7 +187,41 @@ jint ShenandoahHeap::initialize() {
   // Reserve and commit memory for heap
   //
 
-  ReservedSpace heap_rs = Universe::reserve_heap(max_byte_size, heap_alignment);
+  
+  // ReservedSpace heap_rs = Universe::reserve_heap(max_byte_size, heap_alignment);
+  ReservedSpace heap_rs;
+  if (MemLinerEnableMemPool) {
+    heap_rs = Universe::reserve_memliner_memory_pool(max_byte_size, heap_alignment);
+		
+		user_buf = (struct epoch_struct*)mmap((char*)0x100000000000UL, max_byte_size/4096 + 1024, PROT_NONE, MAP_PRIVATE | MAP_NORESERVE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+		if (user_buf == MAP_FAILED) {
+			tty->print("Reserve user_buffer, 0x%lx failed. \n",
+				0x100000000000UL);
+		} else {
+			tty->print("Reserve user_buffer: 0x%lx, bytes_len: 0x%lx \n",
+				(unsigned long)user_buf, max_byte_size/4096 + 1024);
+		}
+		user_buf = (struct epoch_struct*)mmap((char*)0x100000000000UL, max_byte_size/4096 + 1024, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0);
+		if (user_buf == MAP_FAILED) {
+			tty->print("Commit user_buffer, 0x%lx failed. \n", 0x100000000000UL);
+		} else {
+			tty->print("Commit user_buffer: 0x%lx, bytes_len: 0x%lx \n",
+				(unsigned long)user_buf, max_byte_size/4096 + 1024);
+		}
+
+		// #2 Ask kernel to fill the physical pages of the buffer
+		int ret = syscall(457, (unsigned long)user_buf, max_byte_size/4096 + 512);
+		if (ret) {
+			tty->print("syscall error, with code %d\n", ret);
+		}
+		// #3 Check the value of the allcoated data
+		tty->print("epoch %d \n",user_buf->epoch);
+		tty->print("array length %x \n", user_buf->length);
+
+	} else {
+    heap_rs = Universe::reserve_heap(max_byte_size, heap_alignment);
+	}
+  
   initialize_reserved_region((HeapWord*)heap_rs.base(), (HeapWord*) (heap_rs.base() + heap_rs.size()));
   _heap_region = MemRegion((HeapWord*)heap_rs.base(), heap_rs.size() / HeapWordSize);
   _heap_region_special = heap_rs.special();
@@ -332,10 +379,22 @@ jint ShenandoahHeap::initialize() {
   // Initialize the rest of GC subsystems
   //
 
-  _liveness_cache = NEW_C_HEAP_ARRAY(jushort*, _max_workers, mtGC);
+  // Haoran: modify
+  // _liveness_cache = NEW_C_HEAP_ARRAY(jushort*, _max_workers, mtGC);
+  // for (uint worker = 0; worker < _max_workers; worker++) {
+  //   _liveness_cache[worker] = NEW_C_HEAP_ARRAY(jushort, _num_regions, mtGC);
+  //   Copy::fill_to_bytes(_liveness_cache[worker], _num_regions * sizeof(jushort));
+  // }
+  _liveness_cache = NEW_C_HEAP_ARRAY(jushort*, _max_workers , mtGC);
   for (uint worker = 0; worker < _max_workers; worker++) {
     _liveness_cache[worker] = NEW_C_HEAP_ARRAY(jushort, _num_regions, mtGC);
     Copy::fill_to_bytes(_liveness_cache[worker], _num_regions * sizeof(jushort));
+  }
+
+  _prefetch_liveness_cache = NEW_C_HEAP_ARRAY(jushort*, _max_prefetch_workers, mtGC);
+  for (uint worker = 0; worker < _max_prefetch_workers; worker++) {
+    _prefetch_liveness_cache[worker] = NEW_C_HEAP_ARRAY(jushort, _num_regions, mtGC);
+    Copy::fill_to_bytes(_prefetch_liveness_cache[worker], _num_regions * sizeof(jushort));
   }
 
   // The call below uses stuff (the SATB* things) that are in G1, but probably
@@ -345,6 +404,8 @@ jint ShenandoahHeap::initialize() {
                                                          20 /*G1SATBProcessCompletedThreshold */,
                                                          60 /* G1SATBBufferEnqueueingThresholdPercent */,
                                                          Shared_SATB_Q_lock);
+    // Haoran: modify
+  ShenandoahBarrierSet::prefetch_queue_set().initialize(this, PREFETCH_Q_CBL_mon, &_prefetch_mark_queue_buffer_allocator);
 
   _monitoring_support = new ShenandoahMonitoringSupport(this);
   _phase_timings = new ShenandoahPhaseTimings();
@@ -367,6 +428,10 @@ jint ShenandoahHeap::initialize() {
                   NULL;
 
   _control_thread = new ShenandoahControlThread();
+
+
+
+  // _control_prefetch_thread = new ShenandoahControlPrefetchThread(_spf, _control_thread, _scm);
 
   log_info(gc, init)("Initialize Shenandoah heap: " SIZE_FORMAT "%s initial, " SIZE_FORMAT "%s min, " SIZE_FORMAT "%s max",
                      byte_size_in_proper_unit(_initial_size),  proper_unit_for_byte_size(_initial_size),
@@ -435,6 +500,8 @@ ShenandoahHeap::ShenandoahHeap(ShenandoahCollectorPolicy* policy) :
   _max_workers(MAX2(ConcGCThreads, ParallelGCThreads)),
   _workers(NULL),
   _safepoint_workers(NULL),
+  _max_prefetch_workers(PrefetchThreads), // Haoran: modify
+  _prefetch_workers(NULL), // Haoran: modify
   _heap_region_special(false),
   _num_regions(0),
   _regions(NULL),
@@ -444,12 +511,14 @@ ShenandoahHeap::ShenandoahHeap(ShenandoahCollectorPolicy* policy) :
   _heuristics(NULL),
   _free_set(NULL),
   _scm(new ShenandoahConcurrentMark()),
+  _spf(new ShenandoahConcurrentPrefetch()), // Haoran: modify
   _traversal_gc(NULL),
   _full_gc(new ShenandoahMarkCompact()),
   _pacer(NULL),
   _verifier(NULL),
   _alloc_tracker(NULL),
   _phase_timings(NULL),
+  _pf_thread(NULL), // Haoran: modify
   _monitoring_support(NULL),
   _memory_pool(NULL),
   _stw_memory_manager("Shenandoah Pauses", "end of GC pause"),
@@ -464,7 +533,10 @@ ShenandoahHeap::ShenandoahHeap(ShenandoahCollectorPolicy* policy) :
   _bitmap_region_special(false),
   _aux_bitmap_region_special(false),
   _liveness_cache(NULL),
-  _collection_set(NULL)
+  _prefetch_liveness_cache(NULL), // Haoran: modify
+  _collection_set(NULL),
+  _prefetch_mark_queue_buffer_allocator(ShenandoahPrefetchBufferSize, PREFETCH_Q_FL_lock),
+	user_buf(NULL)
 {
   log_info(gc, init)("GC threads: " UINT32_FORMAT " parallel, " UINT32_FORMAT " concurrent", ParallelGCThreads, ConcGCThreads);
   log_info(gc, init)("Reference processing: %s", ParallelRefProcEnabled ? "parallel" : "serial");
@@ -481,12 +553,28 @@ ShenandoahHeap::ShenandoahHeap(ShenandoahCollectorPolicy* policy) :
     _workers->initialize_workers();
   }
 
+// Haoran: modify
+  _max_prefetch_workers = MAX2(_max_prefetch_workers, 1U);
+  _prefetch_workers = new ShenandoahWorkGang("Shenandoah Prefetch Threads", _max_prefetch_workers,
+                            /* are_GC_task_threads */false,
+                            /* are_ConcurrentGC_threads */true);
+  // _prefetch_workers->update_active_workers(_max_prefetch_workers);
+  if (_prefetch_workers == NULL) {
+    vm_exit_during_initialization("Failed necessary allocation.");
+  } else {
+    _prefetch_workers->initialize_workers();
+  } 
+
+
   if (ShenandoahParallelSafepointThreads > 1) {
     _safepoint_workers = new ShenandoahWorkGang("Safepoint Cleanup Thread",
                                                 ShenandoahParallelSafepointThreads,
                                                 false, false);
     _safepoint_workers->initialize_workers();
   }
+
+  // Haoran: modify
+  // _prefetch_queue_set = new ShenandoahPrefetchQueueSet();
 }
 
 #ifdef _MSC_VER
@@ -589,6 +677,11 @@ void ShenandoahHeap::post_initialize() {
   _workers->set_initialize_gclab();
 
   _scm->initialize(_max_workers);
+  // Haoran: modify
+  _spf->initialize(_max_prefetch_workers);
+  _pf_thread = new ShenandoahControlPrefetchThread(_spf, _control_thread, _scm);
+
+
   _full_gc->initialize(_gc_timer);
 
   ref_processing_init();
@@ -1013,12 +1106,89 @@ private:
     while ((r =_cs->claim_next()) != NULL) {
       assert(r->has_live(), "all-garbage regions are reclaimed early");
       _sh->marked_object_iterate(r, &cl);
+      // _sh->marked_local_object_iterate(r, &cl);
 
       if (ShenandoahPacing) {
         _sh->pacer()->report_evac(r->used() >> LogHeapWordSize);
       }
 
       if (_sh->check_cancelled_gc_and_yield(_concurrent)) {
+        break;
+      }
+    }
+  }
+};
+
+class ShenandoahFirstEvacuationTask : public AbstractGangTask {
+private:
+  ShenandoahHeap* const _sh;
+  ShenandoahCollectionSet* const _cs;
+public:
+  ShenandoahFirstEvacuationTask(ShenandoahHeap* sh,
+                           ShenandoahCollectionSet* cs) :
+    AbstractGangTask("Parallel Evacuation Task"),
+    _sh(sh),
+    _cs(cs)
+  {}
+
+  void work(uint worker_id) {
+      ShenandoahConcurrentWorkerSession worker_session(worker_id);
+      ShenandoahSuspendibleThreadSetJoiner stsj(ShenandoahSuspendibleWorkers);
+      ShenandoahEvacOOMScope oom_evac_scope;
+      do_work();
+  }
+
+private:
+  void do_work() {
+    ShenandoahConcurrentEvacuateRegionObjectClosure cl(_sh);
+    ShenandoahHeapRegion* r;
+    while ((r =_cs->claim_next()) != NULL) {
+      assert(r->has_live(), "all-garbage regions are reclaimed early");
+      _sh->marked_local_object_iterate(r, &cl);
+
+      if (ShenandoahPacing) {
+        _sh->pacer()->report_evac(r->used() >> LogHeapWordSize);
+      }
+
+      if (_sh->check_cancelled_gc_and_yield(true)) {
+        break;
+      }
+    }
+  }
+};
+
+class ShenandoahSecondEvacuationTask : public AbstractGangTask {
+private:
+  ShenandoahHeap* const _sh;
+  ShenandoahCollectionSet* const _cs;
+public:
+  ShenandoahSecondEvacuationTask(ShenandoahHeap* sh,
+                           ShenandoahCollectionSet* cs) :
+    AbstractGangTask("Parallel Evacuation Task"),
+    _sh(sh),
+    _cs(cs)
+  {}
+
+  void work(uint worker_id) {
+    ShenandoahConcurrentWorkerSession worker_session(worker_id);
+    ShenandoahSuspendibleThreadSetJoiner stsj(ShenandoahSuspendibleWorkers);
+    ShenandoahEvacOOMScope oom_evac_scope;
+    do_work();
+  }
+
+private:
+  void do_work() {
+    ShenandoahConcurrentEvacuateRegionObjectClosure cl(_sh);
+    ShenandoahHeapRegion* r;
+    while ((r =_cs->claim_next()) != NULL) {
+      assert(r->has_live(), "all-garbage regions are reclaimed early");
+      _sh->unevac_page_iterate(r, &cl);
+
+      if (ShenandoahPacing) {
+        _sh->pacer()->report_evac(r->used() >> LogHeapWordSize);
+      }
+
+      if (_sh->check_cancelled_gc_and_yield(true)) {
         break;
       }
     }
@@ -1492,7 +1662,14 @@ void ShenandoahHeap::op_init_mark() {
 }
 
 void ShenandoahHeap::op_mark() {
+  // Haoran: modify
+  {
+    _scm->set_in_cm(true);
+    _pf_thread->set_started();
+	}
   concurrent_mark()->mark_from_roots();
+  _scm->set_in_cm(false);
+  _pf_thread->set_idle();
 }
 
 class ShenandoahCompleteLivenessClosure : public ShenandoahHeapRegionClosure {
@@ -1624,8 +1801,21 @@ void ShenandoahHeap::op_final_evac() {
 }
 
 void ShenandoahHeap::op_conc_evac() {
-  ShenandoahEvacuationTask task(this, _collection_set, true);
-  workers()->run_task(&task);
+  if(MemLinerDelay) {
+    ShenandoahFirstEvacuationTask task(this, _collection_set);
+    workers()->run_task(&task);
+    log_info(gc)("Concurrent evacuation first phase done.");
+    _collection_set->clear_current_index();
+    log_info(gc)("cleared cset index");
+    ShenandoahSecondEvacuationTask task2(this, _collection_set);
+    workers()->run_task(&task2);
+    log_info(gc)("Concurrent evacuation second phase done.");
+  }
+  else {
+    ShenandoahEvacuationTask task(this, _collection_set, true);
+    workers()->run_task(&task);
+  }
+  
 }
 
 void ShenandoahHeap::op_stw_evac() {
@@ -1871,11 +2061,16 @@ void ShenandoahHeap::set_gc_state_mask(uint mask, bool value) {
 void ShenandoahHeap::set_concurrent_mark_in_progress(bool in_progress) {
   set_gc_state_mask(MARKING, in_progress);
   ShenandoahBarrierSet::satb_mark_queue_set().set_active_all_threads(in_progress, !in_progress);
+
+// Haoran: modify
+  ShenandoahBarrierSet::prefetch_queue_set().set_active_all_threads(in_progress, !in_progress);  
 }
 
 void ShenandoahHeap::set_concurrent_traversal_in_progress(bool in_progress) {
    set_gc_state_mask(TRAVERSAL | HAS_FORWARDED, in_progress);
    ShenandoahBarrierSet::satb_mark_queue_set().set_active_all_threads(in_progress, !in_progress);
+
+  // Haoran: TODO
 }
 
 void ShenandoahHeap::set_evacuation_in_progress(bool in_progress) {
@@ -1925,6 +2120,12 @@ void ShenandoahHeap::cancel_gc(GCCause::Cause cause) {
 uint ShenandoahHeap::max_workers() {
   return _max_workers;
 }
+
+// Haoran: modify
+uint ShenandoahHeap::max_prefetch_workers() {
+  return _max_prefetch_workers;
+}
+
 
 void ShenandoahHeap::stop() {
   // The shutdown sequence should be able to terminate when GC is running.
@@ -2826,10 +3027,35 @@ jushort* ShenandoahHeap::get_liveness_cache(uint worker_id) {
   return _liveness_cache[worker_id];
 }
 
+jushort* ShenandoahHeap::get_prefetch_liveness_cache(uint worker_id) {
+#ifdef ASSERT
+  assert(_prefetch_liveness_cache != NULL, "sanity");
+  assert(worker_id < _max_workers, "sanity");
+  for (uint i = 0; i < num_regions(); i++) {
+    assert(_prefetch_liveness_cache[worker_id][i] == 0, "liveness cache should be empty");
+  }
+#endif
+  return _prefetch_liveness_cache[worker_id];
+}
+
 void ShenandoahHeap::flush_liveness_cache(uint worker_id) {
   assert(worker_id < _max_workers, "sanity");
   assert(_liveness_cache != NULL, "sanity");
   jushort* ld = _liveness_cache[worker_id];
+  for (uint i = 0; i < num_regions(); i++) {
+    ShenandoahHeapRegion* r = get_region(i);
+    jushort live = ld[i];
+    if (live > 0) {
+      r->increase_live_data_gc_words(live);
+      ld[i] = 0;
+    }
+  }
+}
+
+void ShenandoahHeap::flush_prefetch_liveness_cache(uint worker_id) {
+  assert(worker_id < _max_workers, "sanity");
+  assert(_prefetch_liveness_cache != NULL, "sanity");
+  jushort* ld = _prefetch_liveness_cache[worker_id];
   for (uint i = 0; i < num_regions(); i++) {
     ShenandoahHeapRegion* r = get_region(i);
     jushort live = ld[i];
