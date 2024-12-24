@@ -265,7 +265,7 @@ size_t eden_rounding(size_t eden_size){
 }
 
 double eden_decre_factor(double sys, double user){
-  return 0.4 - user/(5*sys);
+  return 0.4 - user/(5*sys) - 0.1;
 }
 
 #define SMALL_EDEN_STEP 128*MB
@@ -288,16 +288,17 @@ uint G1Policy::calculate_desired_high_thru_young_length(){
       //small eden with fast alloc, incre eden
       desired_eden_count += SMALL_EDEN_STEP;
       log_info(gc, ergo)("[DEBUG] incre eden for one step(fast alloc or small eden), new eden = %ld", desired_eden_count);
-    }else if(mut_sys_time_base > _mut_user_time || gc_sys_time_base > _gc_user_time){
+     }else if(_gc_sys_time > _gc_user_time){
+    //}else if(mut_sys_time_base > _mut_user_time || gc_sys_time_base > _gc_user_time){
       //decre eden for large WSS
       double mut_decre = mut_sys_time_base > _mut_user_time ? eden_decre_factor(_mut_sys_time,_mut_user_time) : 0;
       double gc_decre = gc_sys_time_base > _gc_user_time ? eden_decre_factor(_gc_sys_time,_gc_user_time) : 0;
       double decre = (mut_decre - gc_decre) / 4 + gc_decre;
       desired_eden_count = (size_t)((double)desired_eden_count * (1 - decre));
       log_info(gc, ergo)("[DEBUG] decre eden for %lf, new eden = %ld", decre, desired_eden_count);
-    }else if(5*_mut_sys_time < _mut_user_time || 5*_gc_sys_time > _gc_user_time){
+    }else if(2*_mut_sys_time < _mut_user_time || 2*_gc_sys_time > _gc_user_time){
       //slow incre eden
-      desired_eden_count += 16*MB;
+      desired_eden_count += 32*MB;
       log_info(gc, ergo)("[DEBUG] slow incre when sys time small");
     }else{
       log_info(gc, ergo)("[DEBUG] do nothing!");
