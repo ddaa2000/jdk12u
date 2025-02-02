@@ -1170,6 +1170,10 @@ bool G1CollectedHeap::do_full_collection(bool explicit_gc,
 		return false;
 	}
 
+	// [gc breakdown] shengkai log in full gc
+	GCMajfltStats gc_majflt_stats;
+	gc_majflt_stats.start();
+
 	const bool do_clear_all_soft_refs = clear_all_soft_refs ||
 			soft_ref_policy()->should_clear_all_soft_refs();
 
@@ -1179,6 +1183,9 @@ bool G1CollectedHeap::do_full_collection(bool explicit_gc,
 	collector.prepare_collection();
 	collector.collect();
 	collector.complete_collection();
+
+	//shengkai
+	gc_majflt_stats.end_and_log("full");
 
 	// Full collection was successfully completed.
 	return true;
@@ -3078,6 +3085,11 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
 		return false;
 	}
 
+	// [gc breakdown] shengkai record at gc start
+	GCMajfltStats gc_majflt_stats;
+	gc_majflt_stats.start();
+
+
 	_gc_timer_stw->register_gc_start();  // [?] STW ??
 
 	GCIdMark gc_id_mark;
@@ -3413,6 +3425,9 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
 	// It should now be safe to tell the concurrent mark thread to start
 	// without its logging output interfering with the logging output
 	// that came from the pause.
+
+	//shengkai print stat log at end of gc
+	gc_majflt_stats.end_and_log("young");
 
 	if (should_start_conc_mark) {
 		// CAUTION: after the doConcurrentMark() call below,

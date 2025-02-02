@@ -262,6 +262,8 @@ void G1ConcurrentMarkThread::run_service() {
 
     GCIdMark gc_id_mark;
 
+    //shengkai log current mark cycle start
+    os::dump_accum_thread_majflt_minflt_and_cputime("beforeConcCycle");
     _cm->concurrent_cycle_start();
 
     GCTraceConcTime(Info, gc) tt("Concurrent Cycle");
@@ -338,9 +340,16 @@ void G1ConcurrentMarkThread::run_service() {
                                 TimeHelper::counter_to_seconds(mark_end),
                                 TimeHelper::counter_to_millis(mark_end - mark_start));
           mark_manager.set_phase(G1ConcurrentPhase::REMARK, false);
+          // [gc breakdown] shengkai log for remark
+          GCMajfltStats gc_majflt_stats;
+          gc_majflt_stats.start();
+
           CMRemark cl(_cm);
           VM_G1Concurrent op(&cl, "Pause Remark");
           VMThread::execute(&op);
+
+          gc_majflt_stats.end_and_log("remark");
+
           if (_cm->has_aborted()) {
             break;
           } else if (!_cm->restart_for_overflow()) {
@@ -370,9 +379,15 @@ void G1ConcurrentMarkThread::run_service() {
         }
 
         if (!_cm->has_aborted()) {
+          // [gc breakdown] shengkai log for cleanup
+          GCMajfltStats gc_majflt_stats;
+          gc_majflt_stats.start();
+
           CMCleanup cl_cl(_cm);
           VM_G1Concurrent op(&cl_cl, "Pause Cleanup");
           VMThread::execute(&op);
+
+          gc_majflt_stats.end_and_log("cleanup");
         }
       }
       
@@ -396,6 +411,9 @@ void G1ConcurrentMarkThread::run_service() {
       g1h->increment_old_marking_cycles_completed(true /* concurrent */);
 
       _cm->concurrent_cycle_end();
+
+      //shengkai log mark cycle end
+      os::dump_accum_thread_majflt_minflt_and_cputime("afterConcCycle");
     }
 
     cpmanager.set_phase(G1ConcurrentPhase::IDLE, _cm->has_aborted() /* force */);
