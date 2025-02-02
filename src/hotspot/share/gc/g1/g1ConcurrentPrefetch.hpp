@@ -408,6 +408,8 @@ public:
   // Mark the given object on the next bitmap if it is below nTAMS.
   inline bool mark_in_next_bitmap(uint worker_id, HeapRegion* const hr, oop const obj);
   inline bool mark_in_next_bitmap(uint worker_id, oop const obj);
+  inline bool mark_prefetch_in_next_bitmap(uint worker_id, oop const obj);
+
 
   inline bool is_marked_in_next_bitmap(oop p) const;
 
@@ -515,6 +517,15 @@ private:
 
   TruncatedSeq                _marking_step_diffs_ms;
 
+  uint _count_local_queue_page_local;
+  uint _count_local_queue_page_remote;
+
+  uint _count_prefetch_white;
+  uint _count_prefetch_grey;
+  uint _count_prefetch_black;
+
+  uint _count_steal;
+
 //   // Updates the local fields after this task has claimed
 //   // a new region to scan
 //   void setup_for_region(HeapRegion* hr);
@@ -602,6 +613,8 @@ public:
   // the local queue if below the finger. obj is required to be below its region's NTAMS.
   // Returns whether there has been a mark to the bitmap.
   inline bool make_reference_grey(oop obj);
+  inline bool make_prefetch_reference_grey(oop obj);
+
 
   // Grey the object (by calling make_grey_reference) if required,
   // e.g. obj is below its containing region's NTAMS.
@@ -656,6 +669,26 @@ public:
   Pair<size_t, size_t> flush_mark_stats_cache();
 //   // Prints statistics associated with this task
 //   void print_stats();
+
+  void clear_memliner_stats(){
+    _count_local_queue_page_local = 0;
+    _count_local_queue_page_remote = 0;
+    _count_prefetch_black = 0;
+    _count_prefetch_grey = 0;
+    _count_prefetch_white = 0;
+    _count_steal = 0;
+  }
+
+  void print_memliner_stats(){  
+    log_info(gc)(
+      "prefetcher _count_local_queue_page_local: %u _count_local_queue_page_remote: %u _count_steal: %u",
+      _count_local_queue_page_local, _count_local_queue_page_remote, _count_steal
+    );
+    log_info(gc)(
+      "prefetcher _count_prefetch_black: %u _count_prefetch_grey: %u _count_prefetch_white: %u",
+      _count_prefetch_black, _count_prefetch_grey, _count_prefetch_white
+    );
+  }
 };
 
 

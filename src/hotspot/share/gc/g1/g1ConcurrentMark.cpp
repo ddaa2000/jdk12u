@@ -72,6 +72,15 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 	// We move that task's local finger along.
 	_task->move_finger_to(addr);
 
+	size_t page_id = ((size_t)addr - SEMERU_START_ADDR)/4096;
+	bool page_likely_local = G1CollectedHeap::heap()->user_buf->page_stats[page_id] == 0;
+
+	if(page_likely_local){
+		_task->_count_bitmap_page_local += 1;
+	} else {
+		_task->_count_bitmap_page_remote += 1;
+	}
+
 	_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
 	// we only partially drain the local queue and global stack
 	_task->drain_local_queue(true);
@@ -843,6 +852,7 @@ public:
 			assert(worker_id < _cm->active_tasks(), "invariant");
 
 			G1CMTask* task = _cm->task(worker_id);
+			task->clear_memliner_stats();
 			task->record_start_time();
 			if (!_cm->has_aborted()) {
 				do {
@@ -854,6 +864,7 @@ public:
 				} while (!_cm->has_aborted() && task->has_aborted());
 			}
 			task->record_end_time();
+			task->print_memliner_stats();
 			guarantee(!task->has_aborted() || _cm->has_aborted(), "invariant");
 		}
 
@@ -2427,6 +2438,15 @@ void G1CMTask::drain_local_queue(bool partially) {
 			}
 			size_t mask_addr = addr & ((1ULL<<63)-1);
 			size_t page_id = (mask_addr - SEMERU_START_ADDR)/4096;
+
+			bool page_likely_local = G1CollectedHeap::heap()->user_buf->page_stats[page_id] == 0;
+
+			if(page_likely_local){
+				_task->_count_bitmap_page_local += 1;
+			} else {
+				_task->_count_bitmap_page_remote += 1;
+			}
+
 			if((addr & (1ULL<<63)) || _g1h->user_buf->page_stats[page_id] == 0) {
 				G1TaskQueueEntry clean_entry;
 				if(entry.is_array_slice()){
@@ -3019,7 +3039,17 @@ G1CMTask::G1CMTask(uint worker_id,
 	_elapsed_time_ms(0.0),
 	_termination_time_ms(0.0),
 	_termination_start_time_ms(0.0),
-	_marking_step_diffs_ms()
+	_marking_step_diffs_ms(),
+	_count_local_queue_page_local(0),
+	_count_local_queue_page_remote(0),  
+	_count_scan_stat_0(0),
+	_count_scan_stat_1(0),
+	_count_scan(0),
+	_count_push_back(0),
+	// _count_global_queue_page_local(0),
+	// _count_global_queue_page_remote(0),  
+	_count_bitmap_page_local(0),
+	_count_bitmap_page_remote(0)
 {
 	guarantee(task_queue != NULL, "invariant");
 

@@ -720,6 +720,17 @@ private:
 
   TruncatedSeq                _marking_step_diffs_ms;
 
+  uint _count_local_queue_page_local;
+  uint _count_local_queue_page_remote;
+  uint _count_scan_stat_0;
+  uint _count_scan_stat_1;
+  uint _count_scan;
+  uint _count_push_back;
+  // uint _count_global_queue_page_local;
+  // uint _count_global_queue_page_remote;
+  uint _count_bitmap_page_local;
+  uint _count_bitmap_page_remote;
+
   // Updates the local fields after this task has claimed
   // a new region to scan
   void setup_for_region(HeapRegion* hr);
@@ -861,6 +872,33 @@ public:
   Pair<size_t, size_t> flush_mark_stats_cache();
   // Prints statistics associated with this task
   void print_stats();
+
+  void clear_memliner_stats(){
+    _count_local_queue_page_local = 0;
+    _count_local_queue_page_remote = 0;
+    _count_scan_stat_0 = 0;
+    _count_scan_stat_1 = 0;
+    _count_scan = 0;
+    _count_push_back = 0;
+    // _count_global_queue_page_local = 0;
+    // _count_global_queue_page_remote = 0;
+    _count_bitmap_page_local = 0;
+    _count_bitmap_page_remote = 0;
+  }
+
+  void print_memliner_stats(){
+    log_info(gc)(
+      "_count_local_queue_page_local: %u _count_local_queue_page_remote: %u _count_scan_stat_0: %u _count_scan_stat_1: %u _count_scan: %u _count_push_back: %u",
+      _count_local_queue_page_local, _count_local_queue_page_remote, _count_scan_stat_0, _count_scan_stat_1, _count_scan, _count_push_back
+    );
+    // log_info(gc)(
+    //   "_count_global_queue_page_local: %u _count_global_queue_page_remote: %u",
+    //   _count_global_queue_page_local, _count_global_queue_page_remote);
+    log_info(gc)(
+      "_count_bitmap_page_local: %u _count_bitmap_page_remote: %u",
+      _count_bitmap_page_local, _count_bitmap_page_remote);
+  }
+
 };
 
 // Class that's used to to print out per-region liveness

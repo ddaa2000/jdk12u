@@ -48,6 +48,31 @@ inline bool G1ConcurrentPrefetch::mark_in_next_bitmap(uint const worker_id, oop 
   return mark_in_next_bitmap(worker_id, hr, obj);
 }
 
+inline bool G1ConcurrentPrefetch::mark_prefetch_in_next_bitmap(uint const worker_id, oop const obj, G1PFTask* task) {
+  HeapRegion* const hr = _g1h->heap_region_containing(obj);
+  assert(hr != NULL, "just checking");
+  assert(hr->is_in_reserved(obj), "Attempting to mark object at " PTR_FORMAT " that is not contained in the given region %u", p2i(obj), hr->hrm_index());
+
+  if (hr->obj_allocated_since_next_marking(obj)) {
+    return false;
+  }
+
+  // Some callers may have stale objects to mark above nTAMS after humongous reclaim.
+  // Can't assert that this is a valid object at this point, since it might be in the process of being copied by another thread.
+  assert(!hr->is_continues_humongous(), "Should not try to mark object " PTR_FORMAT " in Humongous continues region %u above nTAMS " PTR_FORMAT, p2i(obj), hr->hrm_index(), p2i(hr->next_top_at_mark_start()));
+
+  HeapWord* const obj_addr = (HeapWord*)obj;
+
+  bool success = _cm->next_mark_bitmap()->par_mark(obj_addr);
+  if (success) {
+    add_to_liveness(worker_id, obj, obj->size());
+    task->_count_prefetch_white += 1;
+  } else {
+    task->_count_prefetch_grey += 1;
+  }
+  return success;
+}
+
 inline bool G1ConcurrentPrefetch::mark_in_next_bitmap(uint const worker_id, HeapRegion* const hr, oop const obj) {
   assert(hr != NULL, "just checking");
   assert(hr->is_in_reserved(obj), "Attempting to mark object at " PTR_FORMAT " that is not contained in the given region %u", p2i(obj), hr->hrm_index());
@@ -157,6 +182,29 @@ inline void G1ConcurrentPrefetch::add_to_liveness(uint worker_id, oop const obj,
 
 inline bool G1PFTask::make_reference_grey(oop obj) {
   if (!_pf->mark_in_next_bitmap(_worker_id, obj)) {
+    return false;
+  }
+    G1TaskQueueEntry entry = G1TaskQueueEntry::from_oop(obj);
+    if (obj->is_typeArray()) {
+        // Immediately process arrays of primitive types, rather
+        // than pushing on the mark stack.  This keeps us from
+        // adding humongous objects to the mark stack that might
+        // be reclaimed before the entry is processed - see
+        // selection of candidates for eager reclaim of humongous
+        // objects.  The cost of the additional type test is
+        // mitigated by avoiding a trip through the mark stack,
+        // by only doing a bookkeeping update and avoiding the
+        // actual scan of the object - a typeArray contains no
+        // references, and the metadata is built-in.
+        process_grey_task_entry<false>(entry);
+    } else {
+        push(entry);
+    }
+  return true;
+}
+
+inline bool G1PFTask::make_prefetch_reference_grey(oop obj) {
+  if (!_pf->mark_prefetch_in_next_bitmap(_worker_id, obj)) {
     return false;
   }
     G1TaskQueueEntry entry = G1TaskQueueEntry::from_oop(obj);

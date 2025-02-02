@@ -247,8 +247,16 @@ void G1ConcurrentPrefetchThread::run_service() {
       {
         // G1ConcPhaseManager mark_manager(G1ConcurrentPhase::CONCURRENT_MARK, this);
         jlong mark_start = os::elapsed_counter();
+        for(int i = 0; i < PrefetchThreads; i++){
+          _pf->task(i)->clear_memliner_stats();
+        }
+
         while(_cm->concurrent()) {
           _pf->mark_from_stacks();
+        }
+
+        for(uint i = 0; i < PrefetchThreads; i++){
+          _pf->task(i)->print_memliner_stats();
         }
         // for (uint iter = 1; !_cm->has_aborted(); ++iter) {
         //   // Concurrent marking.
