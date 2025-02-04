@@ -634,6 +634,7 @@ private:
 
 // A class representing a marking task.
 class G1CMTask : public TerminatorTerminator {
+  friend class G1CMBitMapClosure;
 private:
   enum PrivateConstants {
     // The regular clock call is called once the scanned words reaches

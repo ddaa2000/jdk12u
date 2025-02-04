@@ -2442,9 +2442,9 @@ void G1CMTask::drain_local_queue(bool partially) {
 			bool page_likely_local = G1CollectedHeap::heap()->user_buf->page_stats[page_id] == 0;
 
 			if(page_likely_local){
-				_task->_count_bitmap_page_local += 1;
+				_count_local_queue_page_local += 1;
 			} else {
-				_task->_count_bitmap_page_remote += 1;
+				_count_local_queue_page_remote += 1;
 			}
 
 			if((addr & (1ULL<<63)) || _g1h->user_buf->page_stats[page_id] == 0) {

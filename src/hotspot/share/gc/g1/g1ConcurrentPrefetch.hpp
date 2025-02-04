@@ -408,7 +408,9 @@ public:
   // Mark the given object on the next bitmap if it is below nTAMS.
   inline bool mark_in_next_bitmap(uint worker_id, HeapRegion* const hr, oop const obj);
   inline bool mark_in_next_bitmap(uint worker_id, oop const obj);
-  inline bool mark_prefetch_in_next_bitmap(uint worker_id, oop const obj);
+  inline bool mark_prefetch_in_next_bitmap(uint worker_id, oop const obj, G1PFTask* task);
+
+  inline bool is_below_global_finger(oop obj) const;
 
 
   inline bool is_marked_in_next_bitmap(oop p) const;
@@ -429,6 +431,7 @@ public:
 // A class representing a marking task.
 class G1PFTask : public TerminatorTerminator {
   friend class G1PFConcurrentPrefetchingTask;
+  friend class G1ConcurrentPrefetch;
 private:
   enum PrivateConstants {
     // The regular clock call is called once the scanned words reaches

@@ -66,7 +66,11 @@ inline bool G1ConcurrentPrefetch::mark_prefetch_in_next_bitmap(uint const worker
   bool success = _cm->next_mark_bitmap()->par_mark(obj_addr);
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
-    task->_count_prefetch_white += 1;
+    if(is_below_global_finger(obj)){
+      task->_count_prefetch_white += 1;
+    } else {
+      task->_count_prefetch_black += 1;
+    }
   } else {
     task->_count_prefetch_grey += 1;
   }
@@ -203,8 +207,21 @@ inline bool G1PFTask::make_reference_grey(oop obj) {
   return true;
 }
 
+inline bool G1ConcurrentPrefetch::is_below_global_finger(oop obj) const {
+  // If obj is above the global finger, then the mark bitmap scan
+  // will find it later, and no push is needed.  Similarly, if we have
+  // a current region and obj is between the local finger and the
+  // end of the current region, then no push is needed.  The tradeoff
+  // of checking both vs only checking the global finger is that the
+  // local check will be more accurate and so result in fewer pushes,
+  // but may also be a little slower.
+  HeapWord* global_finger = _cm->finger();
+  HeapWord* objAddr = cast_from_oop<HeapWord*>(obj);
+  return objAddr < global_finger;
+}
+
 inline bool G1PFTask::make_prefetch_reference_grey(oop obj) {
-  if (!_pf->mark_prefetch_in_next_bitmap(_worker_id, obj)) {
+  if (!_pf->mark_prefetch_in_next_bitmap(_worker_id, obj, this)) {
     return false;
   }
     G1TaskQueueEntry entry = G1TaskQueueEntry::from_oop(obj);
