@@ -58,4 +58,20 @@ class GCStats : public CHeapObj<mtGC> {
   }
 };
 
+//shengkai add defination
+// Class used to profile and save gc majflt and cputime stats
+class GCMajfltStats {
+  long _stt_majflt;
+  long _stt_minflt;
+  long _stt_user_ms;
+  long _stt_sys_ms;
+
+public:
+  GCMajfltStats();
+  ~GCMajfltStats();
+
+  void start();
+  void end_and_log(const char* cause);
+};
+
 #endif // SHARE_VM_GC_SHARED_GCSTATS_HPP
