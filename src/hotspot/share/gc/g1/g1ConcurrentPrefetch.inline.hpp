@@ -132,7 +132,14 @@ inline void G1PFTask::push(G1TaskQueueEntry task_entry) {
   assert(task_entry.is_array_slice() || _next_mark_bitmap->is_marked((HeapWord*)task_entry.obj()), "invariant");
 
   if (!_task_queue->push(task_entry)) {
-    ShouldNotReachHere();
+    // ShouldNotReachHere();
+    move_entries_to_global_stack();
+
+    // this should succeed since, even if we overflow the global
+    // stack, we should have definitely removed some entries from the
+    // local queue. So, there must be space on it.
+    bool success = _task_queue->push(task_entry);
+    assert(success, "invariant");
   }
 }
 
