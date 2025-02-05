@@ -134,8 +134,9 @@ public:
     assert(_buf != NULL, "postcondition");
     assert(index() > 0, "postcondition");
     assert(index() <= capacity(), "invariant");
+    _buf[index() - 1] = ptr;
+    OrderAccess::storestore();
     _index -= _element_size;
-    _buf[index()] = ptr;
   }
 
   size_t prefetch_queue_threshold() {
