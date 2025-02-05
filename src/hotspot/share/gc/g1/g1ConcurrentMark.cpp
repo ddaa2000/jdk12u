@@ -82,9 +82,12 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 			_task->_count_bitmap_page_local += 1;
 		} else {
 			_task->_count_bitmap_page_remote += 1;
-		}
+		}		
 		_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
+
 	}
+
+
 	// we only partially drain the local queue and global stack
 	_task->drain_local_queue(true);
 	_task->drain_global_stack(true);
@@ -369,8 +372,10 @@ static uint scale_concurrent_worker_threads(uint num_gc_workers) {
 }
 
 G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
-																	 G1RegionToSpaceMapper* prev_bitmap_storage,
-																	 G1RegionToSpaceMapper* next_bitmap_storage) :
+									G1RegionToSpaceMapper* prev_bitmap_storage,
+									G1RegionToSpaceMapper* next_bitmap_storage,
+									G1RegionToSpaceMapper* prev_black_bitmap_storage,
+									G1RegionToSpaceMapper* next_black_bitmap_storage) :
 	// _cm_thread set inside the constructor
 	_g1h(g1h),
 	_completed_initialization(false),
@@ -431,6 +436,8 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
 {
 	_mark_bitmap_1.initialize(g1h->reserved_region(), prev_bitmap_storage);
 	_mark_bitmap_2.initialize(g1h->reserved_region(), next_bitmap_storage);
+	_mark_bitmap_3.initialize(g1h->reserved_region(), prev_black_bitmap_storage);
+	_mark_bitmap_4.initialize(g1h->reserved_region(), next_black_bitmap_storage);
 
 	// Create & start ConcurrentMark thread.
 	_cm_thread = new G1ConcurrentMarkThread(this);
@@ -2102,7 +2109,7 @@ void G1ConcurrentMark::concurrent_cycle_abort() {
 	{
 		GCTraceTime(Debug, gc) debug("Clear Next Bitmap");
 		clear_bitmap(_next_mark_bitmap, _g1h->workers(), false);
-		clear_bitmap(_next_black_mark_bitmap, _concurrent_workers, true);
+		clear_bitmap(_next_black_mark_bitmap, _g1h->workers(), false);
 	}
 	// Note we cannot clear the previous marking bitmap here
 	// since VerifyDuringGC verifies the objects marked during

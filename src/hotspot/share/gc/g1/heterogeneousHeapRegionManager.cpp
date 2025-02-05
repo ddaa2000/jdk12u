@@ -49,7 +49,7 @@ void HeterogeneousHeapRegionManager::initialize(G1RegionToSpaceMapper* heap_stor
                                                 G1RegionToSpaceMapper* bot,
                                                 G1RegionToSpaceMapper* cardtable,
                                                 G1RegionToSpaceMapper* card_counts) {
-  HeapRegionManager::initialize(heap_storage, prev_bitmap, next_bitmap, prev_black_bitmap, next_black_bitmap, cardtable, card_counts);
+  HeapRegionManager::initialize(heap_storage, prev_bitmap, next_bitmap, prev_black_bitmap, next_black_bitmap, bot, cardtable, card_counts);
 
   // We commit bitmap for all regions during initialization and mark the bitmap space as special.
   // This allows regions to be un-committed while concurrent-marking threads are accessing the bitmap concurrently.

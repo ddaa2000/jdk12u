@@ -548,7 +548,9 @@ public:
 
   G1ConcurrentMark(G1CollectedHeap* g1h,
                    G1RegionToSpaceMapper* prev_bitmap_storage,
-                   G1RegionToSpaceMapper* next_bitmap_storage);
+                   G1RegionToSpaceMapper* next_bitmap_storage,
+                   G1RegionToSpaceMapper* prev_black_bitmap_storage,
+                   G1RegionToSpaceMapper* next_black_bitmap_storage);
   ~G1ConcurrentMark();
 
   G1ConcurrentMarkThread* cm_thread() { return _cm_thread; }
@@ -781,7 +783,7 @@ public:
   // scanned.
   inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
   // Resets the task; should be called right at the beginning of a marking phase.
-  void reset(G1CMBitMap* next_mark_bitmap);
+  void reset(G1CMBitMap* next_mark_bitmap, G1CMBitMap* next_black_mark_bitmap);
   // Clears all the fields that correspond to a claimed region.
   void clear_region_fields();
 

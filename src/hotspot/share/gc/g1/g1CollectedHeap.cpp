@@ -1847,7 +1847,7 @@ jint G1CollectedHeap::initialize() {
 
 	_hrm = HeapRegionManager::create_manager(this, g1_collector_policy());
 
-	_hrm->initialize(heap_storage, prev_bitmap_storage, next_bitmap_storage, prev_black_bitmap_storage, next_black_bitmap_storage, cardtable_storage, card_counts_storage);
+	_hrm->initialize(heap_storage, prev_bitmap_storage, next_bitmap_storage, prev_black_bitmap_storage, next_black_bitmap_storage, bot_storage, cardtable_storage, card_counts_storage);
 	_card_table->initialize(cardtable_storage);
 	// Do later initialization work for concurrent refinement.
 	_hot_card_cache->initialize(card_counts_storage);
@@ -2788,6 +2788,7 @@ HeapWord* G1CollectedHeap::do_collection_pause(size_t word_size,
 void G1CollectedHeap::do_concurrent_mark() {
 	MutexLockerEx x(CGC_lock, Mutex::_no_safepoint_check_flag);
 	if (!_cm_thread->in_progress()) {
+		concurrent_mark()->clear_bitmap(concurrent_mark()->next_black_mark_bitmap(), workers(), false);
 		_cm_thread->set_started();
 		// Haoran: modify
 		_pf_thread->set_started();

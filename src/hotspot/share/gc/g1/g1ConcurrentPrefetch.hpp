@@ -574,7 +574,7 @@ public:
   // scanned.
   inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
   // Resets the task; should be called right at the beginning of a marking phase.
-  void reset(G1CMBitMap* next_mark_bitmap);
+  void reset(G1CMBitMap* next_mark_bitmap, G1CMBitMap* next_black_mark_bitmap);
   // // Clears all the fields that correspond to a claimed region.
   // void clear_region_fields();
 

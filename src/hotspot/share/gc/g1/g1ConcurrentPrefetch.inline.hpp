@@ -64,6 +64,8 @@ inline bool G1ConcurrentPrefetch::mark_black_in_next_bitmap(uint const worker_id
   HeapWord* const obj_addr = (HeapWord*)obj;
 
   bool success = _cm->next_mark_bitmap()->par_mark(obj_addr);
+  OrderAccess::storestore();
+
   if( success ){
     _cm->next_black_mark_bitmap()->par_mark(obj_addr);
   }
@@ -87,10 +89,12 @@ inline bool G1ConcurrentPrefetch::mark_prefetch_in_next_bitmap(uint const worker
   HeapWord* const obj_addr = (HeapWord*)obj;
 
   bool success = _cm->next_mark_bitmap()->par_mark(obj_addr);
+  OrderAccess::storestore();
 
   if( success ){
     _cm->next_black_mark_bitmap()->par_mark(obj_addr);
   }
+
 
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());

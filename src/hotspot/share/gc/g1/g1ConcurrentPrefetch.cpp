@@ -183,7 +183,7 @@ void G1ConcurrentPrefetch::reset() {
   // Reset all tasks, since different phases will use different number of active
   // threads. So, it's easiest to have all of them ready.
   for (uint i = 0; i < _max_num_tasks; ++i) {
-    _tasks[i]->reset(_cm->next_mark_bitmap());
+    _tasks[i]->reset(_cm->next_mark_bitmap(), _cm->next_black_mark_bitmap());
   }
 
   // uint max_regions = _g1h->max_regions();
