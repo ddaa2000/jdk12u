@@ -339,7 +339,7 @@ public:
               bool ret = prefetch_queue->dequeue_no_lock(&ptr);
               while (ret && ptr != NULL) {
                 if(!G1CollectedHeap::heap()->is_in_g1_reserved(ptr)) break;
-                bool success = task->make_prefetch_reference_grey((oop)(HeapWord*)ptr);
+                bool success = task->make_prefetch_reference_black((oop)(HeapWord*)ptr);
                 if(success) {
                   // log_debug(prefetch)("Succesfully mark one in PFTask!");
                 }
@@ -438,9 +438,11 @@ void G1PFTask::set_cm_oop_closure(G1PFOopClosure* cm_oop_closure) {
   _cm_oop_closure = cm_oop_closure;
 }
 
-void G1PFTask::reset(G1CMBitMap* next_mark_bitmap) {
+void G1PFTask::reset(G1CMBitMap* next_mark_bitmap, G1CMBitMap* next_black_mark_bitmap) {
   guarantee(next_mark_bitmap != NULL, "invariant");
   _next_mark_bitmap              = next_mark_bitmap;
+  _next_black_mark_bitmap              = next_black_mark_bitmap;
+
   // clear_region_fields();
 
   _calls                         = 0;

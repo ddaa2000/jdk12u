@@ -75,13 +75,16 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 	size_t page_id = ((size_t)addr - SEMERU_START_ADDR)/4096;
 	bool page_likely_local = G1CollectedHeap::heap()->user_buf->page_stats[page_id] == 0;
 
-	if(page_likely_local){
-		_task->_count_bitmap_page_local += 1;
-	} else {
-		_task->_count_bitmap_page_remote += 1;
-	}
 
-	_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
+
+	if(!_task->_next_black_mark_bitmap->is_marked(addr)){
+		if(page_likely_local){
+			_task->_count_bitmap_page_local += 1;
+		} else {
+			_task->_count_bitmap_page_remote += 1;
+		}
+		_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
+	}
 	// we only partially drain the local queue and global stack
 	_task->drain_local_queue(true);
 	_task->drain_global_stack(true);
@@ -374,8 +377,13 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
 
 	_mark_bitmap_1(),
 	_mark_bitmap_2(),
+	_mark_bitmap_3(),
+	_mark_bitmap_4(),
+
 	_prev_mark_bitmap(&_mark_bitmap_1),
 	_next_mark_bitmap(&_mark_bitmap_2),
+	_prev_black_mark_bitmap(&_mark_bitmap_3),
+	_next_black_mark_bitmap(&_mark_bitmap_4),
 
 	_heap(_g1h->reserved_region()),
 
@@ -521,7 +529,7 @@ void G1ConcurrentMark::reset() {
 	// Reset all tasks, since different phases will use different number of active
 	// threads. So, it's easiest to have all of them ready.
 	for (uint i = 0; i < _max_num_tasks; ++i) {
-		_tasks[i]->reset(_next_mark_bitmap);
+		_tasks[i]->reset(_next_mark_bitmap, _next_black_mark_bitmap);
 	}
 
 	uint max_regions = _g1h->max_regions();
@@ -728,6 +736,8 @@ void G1ConcurrentMark::cleanup_for_next_mark() {
 	// guarantee(!_g1h->collector_state()->mark_or_rebuild_in_progress(), "invariant");
 
 	clear_bitmap(_next_mark_bitmap, _concurrent_workers, true);
+	clear_bitmap(_next_black_mark_bitmap, _concurrent_workers, true);
+
 
 	// Repeat the asserts from above.
 	guarantee(cm_thread()->during_cycle(), "invariant");
@@ -737,6 +747,8 @@ void G1ConcurrentMark::cleanup_for_next_mark() {
 void G1ConcurrentMark::clear_prev_bitmap(WorkGang* workers) {
 	assert_at_safepoint_on_vm_thread();
 	clear_bitmap(_prev_mark_bitmap, workers, false);
+	clear_bitmap(_prev_black_mark_bitmap, workers, false);
+
 }
 
 class NoteStartOfMarkHRClosure : public HeapRegionClosure {
@@ -2090,6 +2102,7 @@ void G1ConcurrentMark::concurrent_cycle_abort() {
 	{
 		GCTraceTime(Debug, gc) debug("Clear Next Bitmap");
 		clear_bitmap(_next_mark_bitmap, _g1h->workers(), false);
+		clear_bitmap(_next_black_mark_bitmap, _concurrent_workers, true);
 	}
 	// Note we cannot clear the previous marking bitmap here
 	// since VerifyDuringGC verifies the objects marked during
@@ -2252,9 +2265,11 @@ void G1CMTask::set_cm_oop_closure(G1CMOopClosure* cm_oop_closure) {
 	_cm_oop_closure = cm_oop_closure;
 }
 
-void G1CMTask::reset(G1CMBitMap* next_mark_bitmap) {
+void G1CMTask::reset(G1CMBitMap* next_mark_bitmap, G1CMBitMap* next_black_mark_bitmap) {
 	guarantee(next_mark_bitmap != NULL, "invariant");
 	_next_mark_bitmap              = next_mark_bitmap;
+	_next_black_mark_bitmap        = next_black_mark_bitmap;
+
 	clear_region_fields();
 
 	_calls                         = 0;
@@ -2774,7 +2789,7 @@ void G1CMTask::do_marking_step(double time_target_ms,
 				giveup_current_region();
 				abort_marking_if_regular_check_fail();
 			} else if (_curr_region->is_humongous() && mr.start() == _curr_region->bottom()) {
-				if (_next_mark_bitmap->is_marked(mr.start())) {
+				if (_next_mark_bitmap->is_marked(mr.start()) && !_next_black_mark_bitmap->is_marked(mr.start())) {
 					// The object is marked - apply the closure
 					bitmap_closure.do_addr(mr.start());
 				}

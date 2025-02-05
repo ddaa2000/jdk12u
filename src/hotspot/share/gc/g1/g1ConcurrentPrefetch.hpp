@@ -409,6 +409,8 @@ public:
   inline bool mark_in_next_bitmap(uint worker_id, HeapRegion* const hr, oop const obj);
   inline bool mark_in_next_bitmap(uint worker_id, oop const obj);
   inline bool mark_prefetch_in_next_bitmap(uint worker_id, oop const obj, G1PFTask* task);
+  inline bool mark_black_in_next_bitmap(uint worker_id, oop const obj);
+
 
   inline bool is_below_global_finger(oop obj) const;
 
@@ -455,6 +457,8 @@ private:
   G1ConcurrentMark*           _cm;
   G1ConcurrentPrefetch*       _pf;
   G1CMBitMap*                 _next_mark_bitmap;
+  G1CMBitMap*                 _next_black_mark_bitmap;
+
   // the task queue of this task
   G1PFTaskQueue*              _task_queue;
 
@@ -616,7 +620,9 @@ public:
   // the local queue if below the finger. obj is required to be below its region's NTAMS.
   // Returns whether there has been a mark to the bitmap.
   inline bool make_reference_grey(oop obj);
-  inline bool make_prefetch_reference_grey(oop obj);
+  inline bool make_reference_black(oop obj);
+  inline bool make_prefetch_reference_black(oop obj);
+
 
 
   // Grey the object (by calling make_grey_reference) if required,

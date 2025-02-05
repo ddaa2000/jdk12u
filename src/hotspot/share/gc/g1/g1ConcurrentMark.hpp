@@ -320,8 +320,12 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   // Concurrent marking support structures
   G1CMBitMap              _mark_bitmap_1;
   G1CMBitMap              _mark_bitmap_2;
+  G1CMBitMap              _mark_bitmap_3;
+  G1CMBitMap              _mark_bitmap_4;
   G1CMBitMap*             _prev_mark_bitmap; // Completed mark bitmap
   G1CMBitMap*             _next_mark_bitmap; // Under-construction mark bitmap
+  G1CMBitMap*             _prev_black_mark_bitmap; // Completed mark bitmap
+  G1CMBitMap*             _next_black_mark_bitmap; // Under-construction mark bitmap
 
   // Heap bounds
   MemRegion const         _heap;
@@ -552,6 +556,9 @@ public:
   const G1CMBitMap* const prev_mark_bitmap() const { return _prev_mark_bitmap; }
   G1CMBitMap* next_mark_bitmap() const { return _next_mark_bitmap; }
 
+  const G1CMBitMap* const prev_black_mark_bitmap() const { return _prev_black_mark_bitmap; }
+  G1CMBitMap* next_black_mark_bitmap() const { return _next_black_mark_bitmap; }
+
   // Calculates the number of concurrent GC threads to be used in the marking phase.
   uint calc_active_marking_workers();
 
@@ -657,6 +664,7 @@ private:
   G1CollectedHeap*            _g1h;
   G1ConcurrentMark*           _cm;
   G1CMBitMap*                 _next_mark_bitmap;
+  G1CMBitMap*                 _next_black_mark_bitmap;
   // the task queue of this task
   G1CMTaskQueue*              _task_queue;
 
