@@ -194,7 +194,7 @@ void G1ConcurrentPrefetch::reset() {
 }
 
 bool G1PFTask::should_exit_termination() {
-  return !_cm->concurrent();
+  return !_cm->in_conc_mark_from_roots() || has_aborted();
 }
 
 void G1ConcurrentPrefetch::clear_statistics_in_region(uint region_idx) {
@@ -313,7 +313,7 @@ public:
             index--;
           }
           bool get_queue = 0;
-          while(_cm->concurrent()) {
+          while(_cm->in_conc_mark_from_roots() && !_cm->has_aborted()) {
             if(t == NULL) {
               jtiwh.rewind();
               t = jtiwh.next();
@@ -351,11 +351,16 @@ public:
             _pf->do_yield_check();
           }
 
-        } while (_cm->concurrent());
+        } while (_cm->in_conc_mark_from_roots() && !_cm->has_aborted() && !task->has_aborted());
       }
+
+      if ( _cm->has_aborted() || task->has_aborted() ){
+        _pf->set_has_aborted();
+      }
+
       task->record_end_time();
       log_debug(prefetch)("G1PFConcurrentPrefetchingTask duration %lf ms", task->_elapsed_time_ms);
-      guarantee(!_cm->concurrent(), "invariant");
+      // guarantee(!_cm->concurrent(), "invariant");
     }
 
     double end_vtime = os::elapsedVTime();
@@ -482,8 +487,8 @@ void G1PFTask::move_entries_to_global_stack() {
 
   if (n > 0) {
     if (!_cm->mark_stack_push(buffer)) {
-      ShouldNotReachHere();
-      //set_has_aborted();
+      // ShouldNotReachHere();
+      set_has_aborted();
     }
   }
   // This operation was quite expensive, so decrease the limits.
@@ -492,9 +497,9 @@ void G1PFTask::move_entries_to_global_stack() {
 
 
 void G1PFTask::drain_local_queue(bool partially) {
-  // if (has_aborted()) {
-  //   return;
-  // }
+  if (has_aborted()) {
+    return;
+  }
   size_t max_num_objects = PrefetchNum;
   size_t max_size = PrefetchSize;
   
@@ -507,7 +512,7 @@ void G1PFTask::drain_local_queue(bool partially) {
   //     ret = _task_queue->pop_global(entry);
   //   }
   // }
-  while(_words_scanned < max_size && _objs_scanned < max_num_objects && !_cm->has_aborted()) {
+  while(_words_scanned < max_size && _objs_scanned < max_num_objects && !_cm->has_aborted() && !has_aborted()) {
     // bool ret = _task_queue->pop_global(entry);
     bool ret = _task_queue->pop_local(entry);
 
@@ -534,7 +539,7 @@ void G1PFTask::drain_local_queue(bool partially) {
   }
   if(_words_scanned>0)
     log_debug(prefetch)("_word_scanned: %lu, _objs_scanned: %lu", _words_scanned, _objs_scanned);
-  if(!_cm->has_aborted())
+  if(!_cm->has_aborted() && !has_aborted())
     move_entries_to_global_stack();
   else{
     _task_queue->set_empty();
@@ -706,7 +711,7 @@ void G1PFTask::do_marking_step() {
   // recalculate_limits();
 
   // clear all flags
-  // clear_has_aborted();
+  clear_has_aborted();
   _has_timed_out = false;
   _draining_satb_buffers = false;
 
@@ -718,6 +723,15 @@ void G1PFTask::do_marking_step() {
   G1PFOopClosure cm_oop_closure(_g1h, this);
   set_cm_oop_closure(&cm_oop_closure);
   // ...then partially drain the local queue and the global stack
+
+  if (_cm->has_overflown()) {
+    // This can happen if the mark stack overflows during a GC pause
+    // and this task, after a yield point, restarts. We have to abort
+    // as we need to get into the overflow protocol which happens
+    // right at the end of this task.
+    set_has_aborted();
+  }
+
   drain_local_queue(true);
   
   // drain_global_stack(true);

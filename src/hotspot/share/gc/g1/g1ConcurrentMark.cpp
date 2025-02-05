@@ -1034,14 +1034,29 @@ void G1ConcurrentMark::mark_from_roots() {
 	// Parallel task terminator is set in "set_concurrency_and_phase()"
 	set_concurrency_and_phase(active_workers, true /* concurrent */);
 
+  	set_in_conc_mark_from_roots(true);
+
 	{
 		MutexLockerEx pl(CPF_lock, Mutex::_no_safepoint_check_flag);
+		G1CollectedHeap::heap()->_pf_thread->set_started();
+
 		// Haoran: modify
 		CPF_lock->notify();
 	}
 	G1CMConcurrentMarkingTask marking_task(this);
 	_concurrent_workers->run_task(&marking_task);
 	print_stats();
+
+	set_in_conc_mark_from_roots(false);
+  	{
+		log_info(gc)("before CCM mark from roots finish");
+		MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
+		while(!G1CollectedHeap::heap()->_pf_thread->idle()){
+		ml.wait();
+		}
+		log_info(gc)("after CCM mark from roots finish");
+
+  	}
 }
 
 void G1ConcurrentMark::verify_during_pause(G1HeapVerifier::G1VerifyType type, VerifyOption vo, const char* caller) {
@@ -2992,11 +3007,27 @@ void G1CMTask::do_marking_step(double time_target_ms,
 			if (!is_serial) {
 				// We only need to enter the sync barrier if being called
 				// from a parallel context
+
+				if( _worker_id == 0){
+					log_info(gc)("before CCM overflow handle");
+					MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
+					while(!G1CollectedHeap::heap()->_pf_thread->idle()){
+						ml.wait();
+					}
+					log_info(gc)("after CCM overflow handle");
+				}
 				_cm->enter_first_sync_barrier(_worker_id);
 
 				// When we exit this sync barrier we know that all tasks have
 				// stopped doing marking work. So, it's now safe to
 				// re-initialize our data structures.
+			} else {
+				log_info(gc)("before CCM overflow handle");
+				MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
+				while(!G1CollectedHeap::heap()->_pf_thread->idle()){
+				ml.wait();
+				}
+				log_info(gc)("after CCM overflow handle");
 			}
 
 			clear_region_fields();

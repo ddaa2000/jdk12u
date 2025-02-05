@@ -2227,7 +2227,7 @@ void G1CollectedHeap::increment_old_marking_cycles_completed(bool concurrent) {
 	if (concurrent) {
 		_cm_thread->set_idle();
 		// Haoran: Modify
-		_pf_thread->set_idle();
+		// _pf_thread->set_idle();
 	}
 
 	// This notify_all() will ensure that a thread that called
@@ -2791,7 +2791,6 @@ void G1CollectedHeap::do_concurrent_mark() {
 		concurrent_mark()->clear_bitmap(concurrent_mark()->next_black_mark_bitmap(), workers(), false);
 		_cm_thread->set_started();
 		// Haoran: modify
-		_pf_thread->set_started();
 		CGC_lock->notify();
 		// CPF_lock->notify();
 	}
