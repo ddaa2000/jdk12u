@@ -334,14 +334,17 @@ public:
           }
           if(get_queue) {
             void* ptr;
-            bool ret = prefetch_queue->dequeue(&ptr);
-            while (ret && ptr != NULL) {
-              if(!G1CollectedHeap::heap()->is_in_g1_reserved(ptr)) break;
-              bool success = task->make_prefetch_reference_grey((oop)(HeapWord*)ptr);
-              if(success) {
-                // log_debug(prefetch)("Succesfully mark one in PFTask!");
+            {
+              MutexLockerEx z(prefetch_queue->locker(), Mutex::_no_safepoint_check_flag);
+              bool ret = prefetch_queue->dequeue_no_lock(&ptr);
+              while (ret && ptr != NULL) {
+                if(!G1CollectedHeap::heap()->is_in_g1_reserved(ptr)) break;
+                bool success = task->make_prefetch_reference_grey((oop)(HeapWord*)ptr);
+                if(success) {
+                  // log_debug(prefetch)("Succesfully mark one in PFTask!");
+                }
+                ret = prefetch_queue->dequeue_no_lock(&ptr);
               }
-              ret = prefetch_queue->dequeue(&ptr);
             }
             prefetch_queue->release_processing();
             task->do_marking_step();

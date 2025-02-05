@@ -71,6 +71,10 @@ public:
     }
   }
 
+  Mutex* locker(){
+    return &m;
+  }
+
   bool set_in_processing() {
     if(_in_processing == true) return false;
     if(Atomic::cmpxchg(true, &_in_processing, false ) == false) return true;
@@ -194,8 +198,38 @@ public:
     MutexLockerEx z(&_m, Mutex::_no_safepoint_check_flag);
     size_t current_index = index();
     size_t current_tail = _tail; 
-    if(current_tail == current_index) {
-      *ptrptr = NULL;
+    if(current_tail - current_index <= PrefetchDelay) {
+      *ptrptr = nullptr;
+
+      // _in_dequeue = false;
+      return false;
+    }
+    _tail -= 1;
+    *ptrptr = _buf[current_tail - 1];
+
+
+    // _in_dequeue = false;
+    return true;
+    
+  }
+
+  bool dequeue_no_lock(void** ptrptr) { 
+
+    // while(_in_dequeue == true) {
+    //   continue;
+    // }
+    // if(Atomic::cmpxchg(true, &_in_dequeue, false ) == true) {
+    //   *ptrptr = NULL;
+    //   return false;
+    // }
+    // if(_in_dequeue == true) {
+    //     *ptrptr = NULL;
+    //     return false;
+    // }
+    size_t current_index = index();
+    size_t current_tail = _tail; 
+    if(current_tail - current_index <= PrefetchDelay) {
+      *ptrptr = nullptr;
 
       // _in_dequeue = false;
       return false;
