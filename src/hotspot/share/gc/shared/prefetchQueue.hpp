@@ -72,7 +72,7 @@ public:
   }
 
   Mutex* locker(){
-    return &m;
+    return &_m;
   }
 
   bool set_in_processing() {
@@ -199,7 +199,7 @@ public:
     size_t current_index = index();
     size_t current_tail = _tail; 
     if(current_tail - current_index <= PrefetchDelay) {
-      *ptrptr = nullptr;
+      *ptrptr = NULL;
 
       // _in_dequeue = false;
       return false;
@@ -229,7 +229,7 @@ public:
     size_t current_index = index();
     size_t current_tail = _tail; 
     if(current_tail - current_index <= PrefetchDelay) {
-      *ptrptr = nullptr;
+      *ptrptr = NULL;
 
       // _in_dequeue = false;
       return false;
