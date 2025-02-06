@@ -39,6 +39,8 @@
 #include "gc/g1/heapRegion.inline.hpp"
 #include "gc/g1/heapRegionRemSet.hpp"
 #include "gc/g1/heapRegionSet.inline.hpp"
+#include "gc/g1/g1ConcurrentPrefetchThread.hpp"
+#include "gc/g1/g1ConcurrentPrefetchThread.inline.hpp"
 #include "gc/shared/gcId.hpp"
 #include "gc/shared/gcTimer.hpp"
 #include "gc/shared/gcTrace.hpp"
@@ -85,7 +87,10 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 		}		
 		_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
 
-	}
+	} 
+	// else {
+	// 	ShouldNotReachHere();
+	// }
 
 
 	// we only partially drain the local queue and global stack
@@ -1052,7 +1057,7 @@ void G1ConcurrentMark::mark_from_roots() {
 		log_info(gc)("before CCM mark from roots finish");
 		MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
 		while(!G1CollectedHeap::heap()->_pf_thread->idle()){
-		ml.wait();
+		ml.wait(Mutex::_no_safepoint_check_flag);
 		}
 		log_info(gc)("after CCM mark from roots finish");
 
@@ -3012,7 +3017,7 @@ void G1CMTask::do_marking_step(double time_target_ms,
 					log_info(gc)("before CCM overflow handle");
 					MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
 					while(!G1CollectedHeap::heap()->_pf_thread->idle()){
-						ml.wait();
+						ml.wait(Mutex::_no_safepoint_check_flag);
 					}
 					log_info(gc)("after CCM overflow handle");
 				}
@@ -3025,7 +3030,7 @@ void G1CMTask::do_marking_step(double time_target_ms,
 				log_info(gc)("before CCM overflow handle");
 				MonitorLockerEx ml(CCM_finish_lock, Mutex::_no_safepoint_check_flag);
 				while(!G1CollectedHeap::heap()->_pf_thread->idle()){
-				ml.wait();
+				ml.wait(Mutex::_no_safepoint_check_flag);
 				}
 				log_info(gc)("after CCM overflow handle");
 			}

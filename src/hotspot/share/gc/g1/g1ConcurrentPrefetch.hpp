@@ -397,6 +397,9 @@ public:
   inline bool do_yield_check();
 
 //   bool has_aborted()      { return _has_aborted; }
+  bool has_aborted()            { return _has_aborted; }
+  void set_has_aborted()        { _has_aborted = true; }
+  void clear_has_aborted()      { _has_aborted = false; }
 
 //   void print_summary_info();
 

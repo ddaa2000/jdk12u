@@ -340,6 +340,8 @@ public:
               while (ret && ptr != NULL) {
                 if(!G1CollectedHeap::heap()->is_in_g1_reserved(ptr)) break;
                 bool success = task->make_prefetch_reference_black((oop)(HeapWord*)ptr);
+                // bool success = task->make_reference_grey((oop)(HeapWord*)ptr);
+
                 if(success) {
                   // log_debug(prefetch)("Succesfully mark one in PFTask!");
                 }

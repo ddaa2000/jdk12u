@@ -313,6 +313,8 @@ inline bool G1PFTask::deal_with_reference(T* p) {
     return false;
   }
   return make_reference_black(obj);
+  // return make_reference_grey(obj);
+
 }
 
 inline void G1ConcurrentPrefetch::mark_in_prev_bitmap(oop p) {
