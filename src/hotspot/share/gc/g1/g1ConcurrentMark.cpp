@@ -86,7 +86,6 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 			_task->_count_bitmap_page_remote += 1;
 		}		
 		_task->scan_task_entry(G1TaskQueueEntry::from_oop(oop(addr)));
-
 	} 
 	// else {
 	// 	ShouldNotReachHere();
@@ -2816,7 +2815,7 @@ void G1CMTask::do_marking_step(double time_target_ms,
 				giveup_current_region();
 				abort_marking_if_regular_check_fail();
 			} else if (_curr_region->is_humongous() && mr.start() == _curr_region->bottom()) {
-				if (_next_mark_bitmap->is_marked(mr.start()) && !_next_black_mark_bitmap->is_marked(mr.start())) {
+				if (_next_mark_bitmap->is_marked(mr.start())) {
 					// The object is marked - apply the closure
 					bitmap_closure.do_addr(mr.start());
 				}

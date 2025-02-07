@@ -127,6 +127,11 @@ inline bool G1ConcurrentPrefetch::mark_in_next_bitmap(uint const worker_id, Heap
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
   }
+
+  if( success ){
+    _cm->next_black_mark_bitmap()->par_mark(obj_addr);
+  }
+  
   return success;
 }
 
@@ -312,8 +317,8 @@ inline bool G1PFTask::deal_with_reference(T* p) {
   if (obj == NULL) {
     return false;
   }
-  return make_reference_black(obj);
-  // return make_reference_grey(obj);
+  // return make_reference_black(obj);
+  return make_reference_grey(obj);
 
 }
 

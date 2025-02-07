@@ -296,6 +296,7 @@ public:
 
       G1PFTask* task = _pf->task(worker_id);
       task->record_start_time();
+      uint times = 0;
       if (!_cm->has_aborted()) {
         do {
           // G1TaskQueueEntry entry;
@@ -339,8 +340,8 @@ public:
               bool ret = prefetch_queue->dequeue_no_lock(&ptr);
               while (ret && ptr != NULL) {
                 if(!G1CollectedHeap::heap()->is_in_g1_reserved(ptr)) break;
-                bool success = task->make_prefetch_reference_black((oop)(HeapWord*)ptr);
-                // bool success = task->make_reference_grey((oop)(HeapWord*)ptr);
+                // bool success = task->make_prefetch_reference_black((oop)(HeapWord*)ptr);
+                bool success = task->make_reference_grey((oop)(HeapWord*)ptr);
 
                 if(success) {
                   // log_debug(prefetch)("Succesfully mark one in PFTask!");
@@ -352,6 +353,11 @@ public:
             task->do_marking_step();
             _pf->do_yield_check();
           }
+          // times += 1;
+          // if(times >= 10){
+          //   times = 0;
+          //   os::sleep(Thread::current(), 1, false);
+          // }
 
         } while (_cm->in_conc_mark_from_roots() && !_cm->has_aborted() && !task->has_aborted());
       }

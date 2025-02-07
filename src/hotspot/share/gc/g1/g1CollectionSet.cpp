@@ -499,6 +499,7 @@ void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
 	double non_young_start_time_sec = os::elapsedTime();
 	double predicted_old_time_ms = 0.0;
 	double predicted_optional_time_ms = 0.0;
+	// time_remaining_ms *= 0.5;
 	double optional_threshold_ms = time_remaining_ms * _policy->optional_prediction_fraction();
 	uint expensive_region_num = 0;
 
