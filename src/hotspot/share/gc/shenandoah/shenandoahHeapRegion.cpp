@@ -272,6 +272,7 @@ void ShenandoahHeapRegion::make_trash() {
     case _regular:
       // Immediate region reclaim
       _state = _trash;
+      os::set_free((char*)_reserved.start(), _reserved.byte_size());
       return;
     default:
       report_illegal_transition("trashing");
@@ -499,6 +500,7 @@ void ShenandoahHeapRegion::recycle() {
   _heap->marking_context()->reset_top_at_mark_start(this);
 
   make_empty();
+  // os::set_free((char*)_reserved.start(), _reserved.byte_size());
 }
 
 HeapWord* ShenandoahHeapRegion::block_start_const(const void* p) const {

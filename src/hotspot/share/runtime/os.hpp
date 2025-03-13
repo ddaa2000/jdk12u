@@ -415,6 +415,7 @@ class os: AllStatic {
   static size_t large_page_size();
   static bool   can_commit_large_page_memory();
   static bool   can_execute_large_page_memory();
+  static void   set_free(char* start, size_t size_in_bytes);
 
   // OS interface to polling page
   static address get_polling_page()             { return _polling_page; }

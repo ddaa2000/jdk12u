@@ -3933,6 +3933,11 @@ bool os::can_commit_large_page_memory() {
   return UseTransparentHugePages;
 }
 
+void os::set_free(char* start, size_t size_in_bytes){
+  ::madvise(start, size_in_bytes, MADV_FREE);
+  log_info(gc)("madvise_region");
+}
+
 bool os::can_execute_large_page_memory() {
   return UseTransparentHugePages || UseHugeTLBFS;
 }
