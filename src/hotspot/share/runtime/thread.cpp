@@ -1846,195 +1846,202 @@ static bool is_daemon(oop threadObj) {
 // For any new cleanup additions, please check to see if they need to be applied to
 // cleanup_failed_attach_current_thread as well.
 void JavaThread::exit(bool destroy_vm, ExitType exit_type) {
-	assert(this == JavaThread::current(), "thread consistency check");
+  assert(this == JavaThread::current(), "thread consistency check");
 
-	elapsedTimer _timer_exit_phase1;
-	elapsedTimer _timer_exit_phase2;
-	elapsedTimer _timer_exit_phase3;
-	elapsedTimer _timer_exit_phase4;
+  //shengkai log when thread exit
+	long majflt, minflt, user_time, sys_time;
+	os::current_thread_majflt_minflt_and_cputime(&majflt, &minflt, &user_time, &sys_time);
+	log_info(gc, thread)("Exit JavaThread %s(tid=%d), Majflt=%ld, Minflt=%ld, user=%ldms, sys=%ldms",
+		this->name(), Thread::current()->osthread()->thread_id(), majflt, minflt, user_time, sys_time);
 
-	if (log_is_enabled(Debug, os, thread, timer)) {
-		_timer_exit_phase1.start();
-	}
 
-	HandleMark hm(this);
-	Handle uncaught_exception(this, this->pending_exception());
-	this->clear_pending_exception();
-	Handle threadObj(this, this->threadObj());
-	assert(threadObj.not_null(), "Java thread object should be created");
+  elapsedTimer _timer_exit_phase1;
+  elapsedTimer _timer_exit_phase2;
+  elapsedTimer _timer_exit_phase3;
+  elapsedTimer _timer_exit_phase4;
 
-	// FIXIT: This code should be moved into else part, when reliable 1.2/1.3 check is in place
-	{
-		EXCEPTION_MARK;
+  if (log_is_enabled(Debug, os, thread, timer)) {
+    _timer_exit_phase1.start();
+  }
 
-		CLEAR_PENDING_EXCEPTION;
-	}
-	if (!destroy_vm) {
-		if (uncaught_exception.not_null()) {
-			EXCEPTION_MARK;
-			// Call method Thread.dispatchUncaughtException().
-			Klass* thread_klass = SystemDictionary::Thread_klass();
-			JavaValue result(T_VOID);
-			JavaCalls::call_virtual(&result,
-															threadObj, thread_klass,
-															vmSymbols::dispatchUncaughtException_name(),
-															vmSymbols::throwable_void_signature(),
-															uncaught_exception,
-															THREAD);
-			if (HAS_PENDING_EXCEPTION) {
-				ResourceMark rm(this);
-				jio_fprintf(defaultStream::error_stream(),
-										"\nException: %s thrown from the UncaughtExceptionHandler"
-										" in thread \"%s\"\n",
-										pending_exception()->klass()->external_name(),
-										get_thread_name());
-				CLEAR_PENDING_EXCEPTION;
-			}
-		}
-		JFR_ONLY(Jfr::on_java_thread_dismantle(this);)
+  HandleMark hm(this);
+  Handle uncaught_exception(this, this->pending_exception());
+  this->clear_pending_exception();
+  Handle threadObj(this, this->threadObj());
+  assert(threadObj.not_null(), "Java thread object should be created");
 
-		// Call Thread.exit(). We try 3 times in case we got another Thread.stop during
-		// the execution of the method. If that is not enough, then we don't really care. Thread.stop
-		// is deprecated anyhow.
-		if (!is_Compiler_thread()) {
-			int count = 3;
-			while (java_lang_Thread::threadGroup(threadObj()) != NULL && (count-- > 0)) {
-				EXCEPTION_MARK;
-				JavaValue result(T_VOID);
-				Klass* thread_klass = SystemDictionary::Thread_klass();
-				JavaCalls::call_virtual(&result,
-																threadObj, thread_klass,
-																vmSymbols::exit_method_name(),
-																vmSymbols::void_method_signature(),
-																THREAD);
-				CLEAR_PENDING_EXCEPTION;
-			}
-		}
-		// notify JVMTI
-		if (JvmtiExport::should_post_thread_life()) {
-			JvmtiExport::post_thread_end(this);
-		}
+  // FIXIT: This code should be moved into else part, when reliable 1.2/1.3 check is in place
+  {
+    EXCEPTION_MARK;
 
-		// We have notified the agents that we are exiting, before we go on,
-		// we must check for a pending external suspend request and honor it
-		// in order to not surprise the thread that made the suspend request.
-		while (true) {
-			{
-				MutexLockerEx ml(SR_lock(), Mutex::_no_safepoint_check_flag);
-				if (!is_external_suspend()) {
-					set_terminated(_thread_exiting);
-					ThreadService::current_thread_exiting(this, is_daemon(threadObj()));
-					break;
-				}
-				// Implied else:
-				// Things get a little tricky here. We have a pending external
-				// suspend request, but we are holding the SR_lock so we
-				// can't just self-suspend. So we temporarily drop the lock
-				// and then self-suspend.
-			}
+    CLEAR_PENDING_EXCEPTION;
+  }
+  if (!destroy_vm) {
+    if (uncaught_exception.not_null()) {
+      EXCEPTION_MARK;
+      // Call method Thread.dispatchUncaughtException().
+      Klass* thread_klass = SystemDictionary::Thread_klass();
+      JavaValue result(T_VOID);
+      JavaCalls::call_virtual(&result,
+                              threadObj, thread_klass,
+                              vmSymbols::dispatchUncaughtException_name(),
+                              vmSymbols::throwable_void_signature(),
+                              uncaught_exception,
+                              THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        ResourceMark rm(this);
+        jio_fprintf(defaultStream::error_stream(),
+                    "\nException: %s thrown from the UncaughtExceptionHandler"
+                    " in thread \"%s\"\n",
+                    pending_exception()->klass()->external_name(),
+                    get_thread_name());
+        CLEAR_PENDING_EXCEPTION;
+      }
+    }
+    JFR_ONLY(Jfr::on_java_thread_dismantle(this);)
 
-			ThreadBlockInVM tbivm(this);
-			java_suspend_self();
+    // Call Thread.exit(). We try 3 times in case we got another Thread.stop during
+    // the execution of the method. If that is not enough, then we don't really care. Thread.stop
+    // is deprecated anyhow.
+    if (!is_Compiler_thread()) {
+      int count = 3;
+      while (java_lang_Thread::threadGroup(threadObj()) != NULL && (count-- > 0)) {
+        EXCEPTION_MARK;
+        JavaValue result(T_VOID);
+        Klass* thread_klass = SystemDictionary::Thread_klass();
+        JavaCalls::call_virtual(&result,
+                                threadObj, thread_klass,
+                                vmSymbols::exit_method_name(),
+                                vmSymbols::void_method_signature(),
+                                THREAD);
+        CLEAR_PENDING_EXCEPTION;
+      }
+    }
+    // notify JVMTI
+    if (JvmtiExport::should_post_thread_life()) {
+      JvmtiExport::post_thread_end(this);
+    }
 
-			// We're done with this suspend request, but we have to loop around
-			// and check again. Eventually we will get SR_lock without a pending
-			// external suspend request and will be able to mark ourselves as
-			// exiting.
-		}
-		// no more external suspends are allowed at this point
-	} else {
-		assert(!is_terminated() && !is_exiting(), "must not be exiting");
-		// before_exit() has already posted JVMTI THREAD_END events
-	}
+    // We have notified the agents that we are exiting, before we go on,
+    // we must check for a pending external suspend request and honor it
+    // in order to not surprise the thread that made the suspend request.
+    while (true) {
+      {
+        MutexLockerEx ml(SR_lock(), Mutex::_no_safepoint_check_flag);
+        if (!is_external_suspend()) {
+          set_terminated(_thread_exiting);
+          ThreadService::current_thread_exiting(this, is_daemon(threadObj()));
+          break;
+        }
+        // Implied else:
+        // Things get a little tricky here. We have a pending external
+        // suspend request, but we are holding the SR_lock so we
+        // can't just self-suspend. So we temporarily drop the lock
+        // and then self-suspend.
+      }
 
-	if (log_is_enabled(Debug, os, thread, timer)) {
-		_timer_exit_phase1.stop();
-		_timer_exit_phase2.start();
-	}
-	// Notify waiters on thread object. This has to be done after exit() is called
-	// on the thread (if the thread is the last thread in a daemon ThreadGroup the
-	// group should have the destroyed bit set before waiters are notified).
-	ensure_join(this);
-	assert(!this->has_pending_exception(), "ensure_join should have cleared");
+      ThreadBlockInVM tbivm(this);
+      java_suspend_self();
 
-	if (log_is_enabled(Debug, os, thread, timer)) {
-		_timer_exit_phase2.stop();
-		_timer_exit_phase3.start();
-	}
-	// 6282335 JNI DetachCurrentThread spec states that all Java monitors
-	// held by this thread must be released. The spec does not distinguish
-	// between JNI-acquired and regular Java monitors. We can only see
-	// regular Java monitors here if monitor enter-exit matching is broken.
-	//
-	// ensure_join() ignores IllegalThreadStateExceptions, and so does
-	// ObjectSynchronizer::release_monitors_owned_by_thread().
-	if (exit_type == jni_detach) {
-		// Sanity check even though JNI DetachCurrentThread() would have
-		// returned JNI_ERR if there was a Java frame. JavaThread exit
-		// should be done executing Java code by the time we get here.
-		assert(!this->has_last_Java_frame(),
-					 "should not have a Java frame when detaching or exiting");
-		ObjectSynchronizer::release_monitors_owned_by_thread(this);
-		assert(!this->has_pending_exception(), "release_monitors should have cleared");
-	}
+      // We're done with this suspend request, but we have to loop around
+      // and check again. Eventually we will get SR_lock without a pending
+      // external suspend request and will be able to mark ourselves as
+      // exiting.
+    }
+    // no more external suspends are allowed at this point
+  } else {
+    assert(!is_terminated() && !is_exiting(), "must not be exiting");
+    // before_exit() has already posted JVMTI THREAD_END events
+  }
 
-	// These things needs to be done while we are still a Java Thread. Make sure that thread
-	// is in a consistent state, in case GC happens
-	JFR_ONLY(Jfr::on_thread_exit(this);)
+  if (log_is_enabled(Debug, os, thread, timer)) {
+    _timer_exit_phase1.stop();
+    _timer_exit_phase2.start();
+  }
+  // Notify waiters on thread object. This has to be done after exit() is called
+  // on the thread (if the thread is the last thread in a daemon ThreadGroup the
+  // group should have the destroyed bit set before waiters are notified).
+  ensure_join(this);
+  assert(!this->has_pending_exception(), "ensure_join should have cleared");
 
-	if (active_handles() != NULL) {
-		JNIHandleBlock* block = active_handles();
-		set_active_handles(NULL);
-		JNIHandleBlock::release_block(block);
-	}
+  if (log_is_enabled(Debug, os, thread, timer)) {
+    _timer_exit_phase2.stop();
+    _timer_exit_phase3.start();
+  }
+  // 6282335 JNI DetachCurrentThread spec states that all Java monitors
+  // held by this thread must be released. The spec does not distinguish
+  // between JNI-acquired and regular Java monitors. We can only see
+  // regular Java monitors here if monitor enter-exit matching is broken.
+  //
+  // ensure_join() ignores IllegalThreadStateExceptions, and so does
+  // ObjectSynchronizer::release_monitors_owned_by_thread().
+  if (exit_type == jni_detach) {
+    // Sanity check even though JNI DetachCurrentThread() would have
+    // returned JNI_ERR if there was a Java frame. JavaThread exit
+    // should be done executing Java code by the time we get here.
+    assert(!this->has_last_Java_frame(),
+           "should not have a Java frame when detaching or exiting");
+    ObjectSynchronizer::release_monitors_owned_by_thread(this);
+    assert(!this->has_pending_exception(), "release_monitors should have cleared");
+  }
 
-	if (free_handle_block() != NULL) {
-		JNIHandleBlock* block = free_handle_block();
-		set_free_handle_block(NULL);
-		JNIHandleBlock::release_block(block);
-	}
+  // These things needs to be done while we are still a Java Thread. Make sure that thread
+  // is in a consistent state, in case GC happens
+  JFR_ONLY(Jfr::on_thread_exit(this);)
 
-	// These have to be removed while this is still a valid thread.
-	remove_stack_guard_pages();
+  if (active_handles() != NULL) {
+    JNIHandleBlock* block = active_handles();
+    set_active_handles(NULL);
+    JNIHandleBlock::release_block(block);
+  }
 
-	if (UseTLAB) {
-		tlab().retire();
-	}
+  if (free_handle_block() != NULL) {
+    JNIHandleBlock* block = free_handle_block();
+    set_free_handle_block(NULL);
+    JNIHandleBlock::release_block(block);
+  }
 
-	if (JvmtiEnv::environments_might_exist()) {
-		JvmtiExport::cleanup_thread(this);
-	}
+  // These have to be removed while this is still a valid thread.
+  remove_stack_guard_pages();
 
-	// We must flush any deferred card marks and other various GC barrier
-	// related buffers (e.g. G1 SATB buffer and G1 dirty card queue buffer)
-	// before removing a thread from the list of active threads.
-	BarrierSet::barrier_set()->on_thread_detach(this);
+  if (UseTLAB) {
+    tlab().retire();
+  }
 
-	log_info(os, thread)("JavaThread %s (tid: " UINTX_FORMAT ").",
-		exit_type == JavaThread::normal_exit ? "exiting" : "detaching",
-		os::current_thread_id());
+  if (JvmtiEnv::environments_might_exist()) {
+    JvmtiExport::cleanup_thread(this);
+  }
 
-	if (log_is_enabled(Debug, os, thread, timer)) {
-		_timer_exit_phase3.stop();
-		_timer_exit_phase4.start();
-	}
-	// Remove from list of active threads list, and notify VM thread if we are the last non-daemon thread
-	Threads::remove(this);
+  // We must flush any deferred card marks and other various GC barrier
+  // related buffers (e.g. G1 SATB buffer and G1 dirty card queue buffer)
+  // before removing a thread from the list of active threads.
+  BarrierSet::barrier_set()->on_thread_detach(this);
 
-	if (log_is_enabled(Debug, os, thread, timer)) {
-		_timer_exit_phase4.stop();
-		ResourceMark rm(this);
-		log_debug(os, thread, timer)("name='%s'"
-																 ", exit-phase1=" JLONG_FORMAT
-																 ", exit-phase2=" JLONG_FORMAT
-																 ", exit-phase3=" JLONG_FORMAT
-																 ", exit-phase4=" JLONG_FORMAT,
-																 get_thread_name(),
-																 _timer_exit_phase1.milliseconds(),
-																 _timer_exit_phase2.milliseconds(),
-																 _timer_exit_phase3.milliseconds(),
-																 _timer_exit_phase4.milliseconds());
-	}
+  log_info(os, thread)("JavaThread %s (tid: " UINTX_FORMAT ").",
+    exit_type == JavaThread::normal_exit ? "exiting" : "detaching",
+    os::current_thread_id());
+
+  if (log_is_enabled(Debug, os, thread, timer)) {
+    _timer_exit_phase3.stop();
+    _timer_exit_phase4.start();
+  }
+  // Remove from list of active threads list, and notify VM thread if we are the last non-daemon thread
+  Threads::remove(this);
+
+  if (log_is_enabled(Debug, os, thread, timer)) {
+    _timer_exit_phase4.stop();
+    ResourceMark rm(this);
+    log_debug(os, thread, timer)("name='%s'"
+                                 ", exit-phase1=" JLONG_FORMAT
+                                 ", exit-phase2=" JLONG_FORMAT
+                                 ", exit-phase3=" JLONG_FORMAT
+                                 ", exit-phase4=" JLONG_FORMAT,
+                                 get_thread_name(),
+                                 _timer_exit_phase1.milliseconds(),
+                                 _timer_exit_phase2.milliseconds(),
+                                 _timer_exit_phase3.milliseconds(),
+                                 _timer_exit_phase4.milliseconds());
+  }
 }
 
 void JavaThread::cleanup_failed_attach_current_thread() {

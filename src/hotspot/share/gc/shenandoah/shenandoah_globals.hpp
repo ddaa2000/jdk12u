@@ -423,5 +423,7 @@
                                                                             \
   experimental(bool, ShenandoahLoopOptsAfterExpansion, true,                \
           "Attempt more loop opts after write barrier expansion")           \
+  experimental(bool, ShenandoahUseMadvise, false,                           \
+          "Free garbage regions")                                           \
 
 #endif // SHARE_VM_GC_SHENANDOAH_SHENANDOAH_GLOBALS_HPP

@@ -272,7 +272,9 @@ void ShenandoahHeapRegion::make_trash() {
     case _regular:
       // Immediate region reclaim
       _state = _trash;
-      os::set_free((char*)_reserved.start(), _reserved.byte_size());
+      if (ShenandoahUseMadvise){
+        os::set_free((char*)_reserved.start(), _reserved.byte_size());
+      }
       return;
     default:
       report_illegal_transition("trashing");
