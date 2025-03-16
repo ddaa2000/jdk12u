@@ -100,7 +100,7 @@
 #include <linux/kernel.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#include <sys/mman.h>  
+#include <sys/mman.h>
 #include <sys/errno.h>
 
 size_t G1CollectedHeap::_humongous_object_threshold_in_words = 0;
@@ -169,11 +169,11 @@ HeapRegion* G1CollectedHeap::new_heap_region(uint hrs_index,
 //  Private methods.
 
 /**
- * Tag : Allocate a new region 
- * 
+ * Tag : Allocate a new region
+ *
  *  If allocate new region failed, try to expand the heap size to Xmx#G.
  *  Can't trigger GC here.
- */ 
+ */
 HeapRegion* G1CollectedHeap::new_region(size_t word_size, HeapRegionType type, bool do_expand) {
 	assert(!is_humongous(word_size) || word_size <= HeapRegion::GrainWords,
 				 "the only time we use this to allocate a humongous region is "
@@ -968,15 +968,15 @@ HeapWord* G1CollectedHeap::attempt_allocation_humongous(size_t word_size) {
 
 /**
  * Tag
- * 
+ *
  * [?] Allocate objects into a region ??
- * 
+ *
  * [x] NO GC will be triggered under this path.
  *      The alloation failure should be handled in its caller function.
  *      i.e. Trigger GC.
- * 
+ *
  * [?]  _allocator : manage all the normal objects allocation in G1 heap ?
- * 
+ *
  */
 HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
 																													 bool expect_null_mutator_alloc_region) {
@@ -1151,15 +1151,15 @@ void G1CollectedHeap::print_heap_after_full_collection(G1HeapTransition* heap_tr
 
 /**
  * Tag : G1 STW Full Heap GC
- * 
+ *
  * [?] Confirm this is a STW Full GC ?
- * 
- * 
+ *
+ *
  * More Explanation
- * 
+ *
  * -Xlog:gc
  *  Pause Full (G1 Evacuation Pause)
- * 
+ *
  */
 bool G1CollectedHeap::do_full_collection(bool explicit_gc,
 																				 bool clear_all_soft_refs) {
@@ -1170,8 +1170,13 @@ bool G1CollectedHeap::do_full_collection(bool explicit_gc,
 		return false;
 	}
 
-	const bool do_clear_all_soft_refs = clear_all_soft_refs ||
-			soft_ref_policy()->should_clear_all_soft_refs();
+  // [gc breakdown] shengkai log in full gc
+  GCMajfltStats gc_majflt_stats;
+  gc_majflt_stats.start();
+
+
+  const bool do_clear_all_soft_refs = clear_all_soft_refs ||
+      soft_ref_policy()->should_clear_all_soft_refs();
 
 	G1FullCollector collector(this, explicit_gc, do_clear_all_soft_refs);
 	GCTraceTime(Info, gc) tm("Pause Full", NULL, gc_cause(), true);
@@ -1180,17 +1185,21 @@ bool G1CollectedHeap::do_full_collection(bool explicit_gc,
 	collector.collect();
 	collector.complete_collection();
 
-	// Full collection was successfully completed.
-	return true;
+  //shengkai
+  gc_majflt_stats.end_and_log("full");
+
+
+  // Full collection was successfully completed.
+  return true;
 }
 
 
 /**
  * Tag : STW Full Heap GC ??
- * 
+ *
  * [?] Which kind of Full GC ?
  *    => Assume it's a STW Parallel Full GC now
- * 
+ *
  */
 void G1CollectedHeap::do_full_collection(bool clear_all_soft_refs) {
 	// Currently, there is no facility in the do_full_collection(bool) API to notify
@@ -1386,7 +1395,7 @@ HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
 
 /**
  * Tag : expand current heap until reach the limits setted by -Xmx#G/M/K
- * 
+ *
  */
 bool G1CollectedHeap::expand(size_t expand_bytes, WorkGang* pretouch_workers, double* expand_time_ms) {
 	size_t aligned_expand_bytes = ReservedSpace::page_align_size_up(expand_bytes);
@@ -1710,7 +1719,7 @@ jint G1CollectedHeap::initialize() {
 
 		// max_byte_size is also controlled by -Xmx at CPU server now.
 		heap_rs = Universe::reserve_memliner_memory_pool(max_byte_size, heap_alignment);
-		
+
 		user_buf = (struct epoch_struct*)mmap((char*)0x100000000000UL, max_byte_size/4096 + 1024, PROT_NONE, MAP_PRIVATE | MAP_NORESERVE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 		if (user_buf == MAP_FAILED) {
 			tty->print("Reserve user_buffer, 0x%lx failed. \n",
@@ -2067,8 +2076,8 @@ void G1CollectedHeap::iterate_hcc_closure(CardTableEntryClosure* cl, uint worker
 /**
  * Tag
  * [?] Transffer dirty card to RemSet ?
- * 
- * 
+ *
+ *
  */
 void G1CollectedHeap::iterate_dirty_card_closure(CardTableEntryClosure* cl, uint worker_i) {
 	DirtyCardQueueSet& dcqs = G1BarrierSet::dirty_card_queue_set();
@@ -2440,7 +2449,7 @@ void G1CollectedHeap::prepare_for_verify() {
 
 /**
  * Put the object parameters into current thread's prefetch queue
- *    
+ *
  * @param   obj1   The 1st object instance, passed from application.
  * @param   obj2   The 2nd object instance, passed from application.
  * @param   obj3   The 3rd object instance, passed from application.
@@ -2693,10 +2702,10 @@ void G1CollectedHeap::trace_heap(GCWhen::Type when, const GCTracer* gc_tracer) {
 
 /**
  * Tag : get the static heap handler
- * 
- * 	[?] G1CollectedHeap -> CollectedHeap 
- * 		
- * 
+ *
+ * 	[?] G1CollectedHeap -> CollectedHeap
+ *
+ *
  */
 G1CollectedHeap* G1CollectedHeap::heap() {
 	CollectedHeap* heap = Universe::heap();
@@ -3050,24 +3059,24 @@ void G1CollectedHeap::start_new_collection_set() {
 
 /**
  * Tag : Entry, the Stop-The-World Young GC.
- * 
- * 
+ *
+ *
  * [?] Meaning of safepoint ?
  *     => Mutator is suspended ?
- * 
+ *
  * [?] How many phases does the Young GC have ?
  *    a. Root scan
- *    b. Old to Yong 
+ *    b. Old to Yong
  *    c. Steal work ?
- * 
- * 
+ *
+ *
  * More Explanation.
- * 
+ *
  * [x] Who sets the _in_initial_mark_gc to trigger the Concurrent marking ??
- *    => G1Policy::decide_on_conc_mark_initiation() 
+ *    => G1Policy::decide_on_conc_mark_initiation()
  *    => This function check if the heap usage/occupancy exceeds the intial threshold.
- * 
- * 
+ *
+ *
  */
 bool
 G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
@@ -3098,7 +3107,7 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
 	_verifier->verify_dirty_young_regions();
 
 	// [?] The difference ?
-	// A young GC can be a normal evacuate process 
+	// A young GC can be a normal evacuate process
 	// OR
 	// The initial Marking phase for full concurrent marking process
 	//
@@ -3144,11 +3153,11 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
 
 		GCTraceCPUTime tcpu;
 
-		// GC logs 
-		// Controlled by -Xlog:gc 
+		// GC logs
+		// Controlled by -Xlog:gc
 		//
 		// 1) STW Young GC  : Pause Young (Normal)
-		// 2) Initial phase : Pause Young (Concurrent Start) (G1 Evacuation Pause) 
+		// 2) Initial phase : Pause Young (Concurrent Start) (G1 Evacuation Pause)
 		// 3) Clean up      : ? Mixed ?
 		G1HeapVerifier::G1VerifyType verify_type;
 		FormatBuffer<> gc_string("Pause Young ");
@@ -3271,7 +3280,7 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
 																									collection_set()->optional_region_length());
 				// Flush the Mutator thread local DirtyCard queue to Mutator Global DirtyCard queue
 				// G1ThreadLocalData->_dirty_card_queue  to G1BarrierSet->_dirty_card_queue_set
-				pre_evacuate_collection_set();			
+				pre_evacuate_collection_set();
 
 				// Actually do the work...
 				evacuate_collection_set(&per_thread_states);             // Eden + Survivor regions --> Survivor regions
@@ -3477,12 +3486,12 @@ void G1ParEvacuateFollowersClosure::do_void() {
 
 /**
  * Tag : STW Young GC task
- * 
+ *
  * Main tasks:
- * 	1) Evacuate roots 
- * 	2) 
- * 
- * 
+ * 	1) Evacuate roots
+ * 	2)
+ *
+ *
  */
 class G1ParTask : public AbstractGangTask {
 protected:
@@ -3971,10 +3980,10 @@ void G1CollectedHeap::pre_evacuate_collection_set() {
 
 /**
  * Tag : STW Young GC (Or Concurrent Marking - Intial Phase)
- * 
+ *
  *  Build the GC tasks for STW Young GC.
  *  The main work of the STW Young GC is G1RootProcessor ?
- * 
+ *
  */
 void G1CollectedHeap::evacuate_collection_set(G1ParScanThreadStateSet* per_thread_states) {
 	// Should G1EvacuationFailureALot be in effect for this GC?

@@ -739,12 +739,18 @@ CollectedHeap* Universe::create_heap() {
 // HeapBased - Use compressed oops with heap base + encoding.
 
 jint Universe::initialize_heap() {
-	_collectedHeap = create_heap();
-	jint status = _collectedHeap->initialize();
-	if (status != JNI_OK) {
-		return status;
-	}
-	log_info(gc)("Using %s", _collectedHeap->name());
+  long majflt, minflt;
+  os::get_accum_majflt_minflt(&majflt, &minflt);
+  log_info(gc)("Majflt(init heap)=%ld", majflt);
+  log_info(gc)("Minflt(init heap)=%ld", minflt);
+  os::dump_accum_thread_majflt_minflt_and_cputime("Init heap");
+
+  _collectedHeap = create_heap();
+  jint status = _collectedHeap->initialize();
+  if (status != JNI_OK) {
+    return status;
+  }
+  log_info(gc)("Using %s", _collectedHeap->name());
 
 	ThreadLocalAllocBuffer::set_max_size(Universe::heap()->max_tlab_size());
 
@@ -1354,15 +1360,15 @@ bool Universe::release_fullgc_alot_dummy() {
 
 /**
  * Memliner
- *  
+ *
  * 	Universe path :
  * 1) Get Memory from OS at specific start address, controlled by CPU server.
- * 
+ *
  * Parameters:
  * 		heap_size : Controlled by heap_size, we need to set a separate option ?
  * 		alignment : Region size alignment, determined by -XX:SemeruMemPoolAlignment,
  * 								also HeapRegion::SemeruGrainBytes, region_size
- * 
+ *
  * Added by Chenxi.
  */
 

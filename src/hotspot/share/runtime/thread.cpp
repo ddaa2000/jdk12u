@@ -1847,6 +1847,11 @@ static bool is_daemon(oop threadObj) {
 // cleanup_failed_attach_current_thread as well.
 void JavaThread::exit(bool destroy_vm, ExitType exit_type) {
 	assert(this == JavaThread::current(), "thread consistency check");
+  //shengkai log when thread exit
+  long majflt, minflt, user_time, sys_time;
+  os::current_thread_majflt_minflt_and_cputime(&majflt, &minflt, &user_time, &sys_time);
+  log_info(gc, thread)("Exit JavaThread %s(tid=%d), Majflt=%ld, Minflt=%ld, user=%ldms, sys=%ldms",
+                       this->name(), Thread::current()->osthread()->thread_id(), majflt, minflt, user_time, sys_time);
 
 	elapsedTimer _timer_exit_phase1;
 	elapsedTimer _timer_exit_phase2;
@@ -2815,7 +2820,7 @@ class RememberProcessedThread: public StackObj {
 };
 
 /**
- * Tag : SWT Young GC, Scan Java thread (App)'s stack variables 
+ * Tag : SWT Young GC, Scan Java thread (App)'s stack variables
  */
 void JavaThread::oops_do(OopClosure* f, CodeBlobClosure* cf) {
 	// Verify that the deferred card marks have been flushed.
